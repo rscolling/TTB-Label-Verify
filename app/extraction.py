@@ -196,6 +196,8 @@ class ClaudeExtractor:
                 else:
                     # 4xx is permanent — retrying a bad request only doubles the failure.
                     raise ExtractionError("The label reading service rejected the request.") from exc
+        if isinstance(last_error, ExtractionError):
+            raise ExtractionError(str(last_error)) from last_error
         raise ExtractionError("The label reading service is unavailable right now.") from last_error
 
     @staticmethod
