@@ -75,7 +75,7 @@ playwright install chromium      # once, for the browser E2E tests
 pytest
 ```
 
-The offline suite (296 tests, about 20 seconds) covers the rules engine, the
+The offline suite (308 tests, about 20 seconds) covers the rules engine, the
 API with a mocked extractor, real-browser E2E against a fake backend, and three
 adversarial QA suites. It never touches the network and needs no API key.
 
@@ -92,6 +92,7 @@ python eval/run_eval.py      # full 16-label eval against ground truth
 |----------|---------|---------|
 | `ANTHROPIC_API_KEY` | (none) | Server-side only; required for real label extraction. Never sent to the browser. |
 | `BATCH_CONCURRENCY` | `4` | How many labels are processed in parallel during a batch. |
+| `EXTRACTION_MODEL` | `claude-sonnet-5` | Vision model used for extraction. `claude-haiku-4-5-20251001` measured faster on the eval set, with trade-offs documented in [APPROACH.md](APPROACH.md). |
 
 ## Repo layout
 

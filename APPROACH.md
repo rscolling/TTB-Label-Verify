@@ -3,8 +3,10 @@
 ## Architecture
 
 **AI for perception, code for judgment.** One Claude vision call
-(`claude-sonnet-5`, structured output via a forced tool-use schema) transcribes
-the seven required fields off the label image, with per-field confidence. A
+(`claude-sonnet-5` by default; the `EXTRACTION_MODEL` knob and its measured
+trade-offs are under [Technical choices](#technical-choices-for-this-scope) —
+structured output via a forced tool-use schema) transcribes the seven required
+fields off the label image and lists any fields whose reading is uncertain. A
 deterministic, unit-tested Python rules engine then renders every verdict. No
 verdict is ever produced by the model: a compliance agency needs matching rules
 that are auditable, testable, and explainable, and that behave identically on
@@ -43,7 +45,7 @@ decision that answers it, and where that decision is tested.
 | Dave Morrison: "STONE'S THROW" vs "Stone's Throw" are functionally identical; label review requires judgment beyond pattern matching | Tolerant text matching with a human-review lane | Brand and class/type use case-insensitive, whitespace-normalized fuzzy matching (rapidfuzz `token_sort_ratio`: >= 90 match, 75-89 review, < 75 mismatch). The middle band routes genuine judgment calls to the agent instead of forcing a binary verdict | `tests/test_text_match.py` (trap 1 named test), `tests/test_e2e_ui.py` (happy path uses exactly this brand pair) |
 | Dave Morrison: the tool must accelerate the workflow without adding friction | Fewer clicks, explanations not codes | Single page, one submit button, per-field one-sentence explanations; batch "What to look at" column names only the fields that need attention | `tests/test_ui.py`, `tests/test_e2e_batch_ui.py` |
 | Jenny Park: government warning requires exact match — word-for-word, all caps, bold | F7 strictness (27 CFR 16.21) | Whitespace/smart-quote normalization, then exact text comparison against the statutory text; "GOVERNMENT WARNING:" prefix checked for all caps on the case-preserved transcription (title case fails); on mismatch, a per-clause diff with word-level differences ("expected 'may' -> found 'might'"); bold is a best-effort vision self-report — "not bold" downgrades to review, never a silent pass or a hard fail (documented limitation) | `tests/test_warning.py` (traps 2-4), `tests/qa/test_qa_warning.py` (unicode whitespace, lowercase prefix), `tests/test_e2e_ui.py` (clause diff renders as prose) |
-| Jenny Park: handle imperfectly photographed labels (angles, lighting, glare) | Degrade to review, never a silent wrong verdict | The extractor reports per-field confidence; any field below 0.6 has its match/mismatch verdict downgraded to ⚠️ needs review; the eval set includes angled and glare-degraded variants | `tests/test_engine.py` (trap 10), `eval/labels/15-bourbon-angled.png`, `eval/labels/16-bourbon-glare.png` with expected verdicts in `eval/manifest.json` |
+| Jenny Park: handle imperfectly photographed labels (angles, lighting, glare) | Degrade to review, never a silent wrong verdict | The extractor flags uncertain fields; an uncertain reading of text that is present on the label has its match/mismatch verdict downgraded to ⚠️ needs review, while a confidently absent field keeps its decisive verdict (a missing-origin import still fails); the eval set includes angled and glare-degraded variants | `tests/test_engine.py` (trap 10), `eval/labels/15-bourbon-angled.png`, `eval/labels/16-bourbon-glare.png` with expected verdicts in `eval/manifest.json` |
 
 ## Technical choices for this scope
 
@@ -56,16 +58,34 @@ extracted label text are inert by construction.
 
 **No orchestration framework.** The pipeline is one model call followed by pure
 functions. LangChain-style abstractions would wrap a single `messages.create`
-in indirection. The `anthropic` SDK is called directly; retry-once is four
-lines of code.
+in indirection. The `anthropic` SDK is called directly; the retry policy — one
+retry for transient failures (connection errors, 5xx, 429) and malformed tool
+payloads, no retry for permanent 4xx — is a small hand-written loop.
 
 **Deterministic rules, not LLM-as-judge.** Verdicts must be reproducible
 (same label, same answer, every time), auditable (an agent can read
 `app/rules/warning.py` and see exactly why title case fails), cheap (no second
-model call per field), and testable (the matchers carry 296 offline tests). A
+model call per field), and testable (the matchers carry 308 offline tests). A
 rule change is a reviewable code diff, not prompt drift. The rules engine and
-its callers are pinned by the 296-test offline suite. The model does the one
+its callers are pinned by the 308-test offline suite. The model does the one
 thing code cannot: read a photograph.
+
+**Extraction model choice.** `EXTRACTION_MODEL` (default `claude-sonnet-5`)
+selects the vision model. Both candidates were measured on the 16-label eval
+set:
+
+| | `claude-sonnet-5` (default) | `claude-haiku-4-5-20251001` |
+|---|---|---|
+| Latency (mean per label) | 5.3 s as first measured; 4.9 s after slimming the output schema | 4.1 s |
+| Structural reliability | all tool payloads well-formed | 3/16 labels returned intermittently malformed payloads (now caught and retried) |
+| Degraded-image verdict integrity | correct on the glare-degraded label | one confidently wrong verdict on the glare-degraded label |
+
+Sonnet stays the default because a confidently wrong verdict on a degraded
+photo is exactly the failure mode R6 forbids; the env knob is the documented
+speed option, with these trade-offs. The call sets no sampling parameters —
+`claude-sonnet-5` rejects `temperature` as deprecated — so run-to-run
+stability comes from the schema-forced output and the deterministic rules
+engine, not from sampling settings.
 
 **Growth path.** If this went to production the seams are already in place:
 the `Extractor` protocol takes an Azure-tenant or local backend; the batch
@@ -86,12 +106,12 @@ domains — is answered by a seam, not a rewrite:
   TTB's tenant means implementing that protocol against an Azure OpenAI
   vision deployment in the FedRAMP boundary, or a locally hosted vision
   model — one class, zero changes to the rules engine, API, or UI.
-- The offline test suite already proves the swap: 296 tests run the full app
+- The offline test suite already proves the swap: 308 tests run the full app
   against a substitute extractor with no outbound traffic at all.
 
 ## Testing and verification
 
-296 tests pass offline in about 20 seconds (`pytest`), plus one key-gated live
+308 tests pass offline in about 20 seconds (`pytest`), plus one key-gated live
 test. Levels:
 
 | Level | What | Where |
@@ -124,7 +144,10 @@ breaks), proof-to-ABV conversion, wrong ABV, cL/mL unit equivalence, wrong net
 contents, missing import origin, wrong class/type, and two photo-degraded
 variants (angle, glare, derived with a fixed seed so regeneration is
 verdict-stable). Labels are rendered programmatically (HTML/CSS through
-headless Chromium) so the trap text on each image is exact by construction;
+headless Chromium) at 1600 px — an earlier 1000 px render put the statutory
+warning's small print at ~11 px, low enough to cause random transcription
+noise (finding 4 below) — so the trap text on each image is exact by
+construction;
 the generator is committed (`eval/generate_labels.py`) and
 `eval/manifest.json` is the ground truth, declaring the application data and
 the allowed per-field verdicts for every label.
@@ -143,9 +166,66 @@ if any verdict falls outside its allowed set.
 
 ### Live eval results
 
-Pending: this section is populated from `python eval/run_eval.py --markdown`
-after a keyed run. No API key was present in the build environment, so the
-matrix here would have been fabricated — it is omitted instead.
+Final keyed run, `python eval/run_eval.py --markdown`, `claude-sonnet-5`,
+2026-07-18:
+
+| label | brand | class_type | abv | net_contents | producer | origin_country | warning | time |
+|---|---|---|---|---|---|---|---|---|
+| 01-bourbon-clean | match | match | match | match | match | na | match | 5.9s |
+| 02-wine-clean | match | match | match | match | match | na | match | 4.6s |
+| 03-beer-clean | match | match | match | match | match | na | match | 4.4s |
+| 04-gin-import-clean | match | match | match | match | match | match | match | 5.1s |
+| 05-brand-case-fuzzy | match | match | match | match | match | na | match | 4.5s |
+| 06-warning-titlecase | match | match | match | match | match | na | mismatch | 4.9s |
+| 07-warning-word-swap | match | match | match | match | match | na | mismatch | 5.1s |
+| 08-warning-cosmetic | match | match | match | match | match | na | match | 4.7s |
+| 09-proof-only | match | match | match | match | match | na | match | 4.6s |
+| 10-abv-wrong | match | match | mismatch | match | match | na | match | 4.4s |
+| 11-netcontents-cl | match | match | match | match | match | match | match | 4.4s |
+| 12-netcontents-wrong | match | match | match | mismatch | match | na | match | 5.6s |
+| 13-import-missing-origin | match | match | match | match | match | mismatch | match | 4.4s |
+| 14-classtype-wrong | match | mismatch | match | match | match | na | match | 7.1s |
+| 15-bourbon-angled | match | match | match | match | match | na | match | 4.7s |
+| 16-bourbon-glare | match | match | match | match | match | na | match | 4.5s |
+
+Labels passing: 16/16. Field verdicts as expected: 112/112. Latency
+(extract + verify) mean 4.9 s, max 7.1 s against the 5 s budget — 5 of the 16
+labels individually exceeded 5 s. The harness exits non-zero if any verdict
+falls outside its allowed set; the two most recent consecutive full-set runs
+were both clean (16/16 labels, 112/112 verdicts, exit 0).
+
+One note on R6: the photo-degraded variants are synthetic 1600 px renders,
+while real phone photos arrive at 3-4K resolution, so the synthetic set is the
+conservative case for small print.
+
+### Eval-driven iteration
+
+The live eval was not a one-shot scorecard; it surfaced five real defects,
+each fixed and pinned by a regression test:
+
+1. **Producer boilerplate.** A compliant beer label failed the producer match
+   because the label prints "BREWED AND CANNED BY X" where the application says
+   "X"; the matcher now strips bottler-statement boilerplate (bottled /
+   distilled / produced / brewed / canned / packed / packaged by) before
+   comparing.
+2. **Brand tagline fold-in.** A label rendering the application's brand inside
+   a longer tagline hard-failed the brand match; exact containment with extra
+   words is a judgment call, so containment now routes to ⚠️ review, never a
+   hard mismatch.
+3. **Absent-field confidence bug.** The import-missing-origin label flipped
+   between review and mismatch across runs because the low-confidence
+   downgrade also fired on confidently absent fields; the downgrade now
+   applies only to uncertain readings of text that is present, so confident
+   absence keeps its decisive verdict.
+4. **OCR noise at 1000 px.** Compliant labels randomly failed the warning
+   check — a different label each run — because the 1000 px render put the
+   statutory warning at ~11 px; the set is re-rendered at 1600 px, after which
+   two consecutive full runs were clean.
+5. **Retry masking a permanent 400.** A deprecated `temperature` parameter
+   caused a 400 that the retry loop swallowed into a generic failure message;
+   a permanent 4xx can never succeed on retry, so it now fails immediately
+   with the API's own message, and only connection errors, 5xx, 429, and
+   malformed tool payloads get the single retry.
 
 ## Assumptions and limitations
 
@@ -168,7 +248,8 @@ matrix here would have been fabricated — it is omitted instead.
   banner. The direct API rejects it once, before any spend.
 - **Anthropic rate limits bound batch throughput.** 300 labels is 300 vision
   calls; `BATCH_CONCURRENCY` (default 4) is the throttle. A production system
-  would add queueing and backoff beyond the built-in single retry.
+  would add queueing and backoff beyond the built-in single retry for
+  transient failures.
 - **A direct 300-file API call is memory-bound** (all uploads are read into
   memory for the request). The UI's 10-file chunking keeps real usage small;
   a production system would stream to bounded temp storage — deliberately not
