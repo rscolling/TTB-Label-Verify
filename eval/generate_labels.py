@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Synthetic TTB test-label generator — eval harness ground truth.
 
-Renders 14 fictional bottle labels as HTML/CSS -> PNG (Playwright/Chromium),
+Renders 16 fictional bottle labels (14 direct + 2 degraded variants) as HTML/CSS -> PNG (Playwright/Chromium),
 derives 2 photo-degraded variants (Pillow/numpy, fixed seed), and writes
 eval/manifest.json declaring, per label, the submitted application data and
 the expected per-field verdicts.
