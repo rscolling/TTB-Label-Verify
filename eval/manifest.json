@@ -1,0 +1,610 @@
+{
+  "labels": [
+    {
+      "file": "labels/01-bourbon-clean.png",
+      "trap_case": null,
+      "description": "Clean baseline: Kentucky straight bourbon, all 7 fields present and matching.",
+      "application": {
+        "brand": "Copper Hollow",
+        "class_type": "Kentucky Straight Bourbon Whiskey",
+        "abv": 45.0,
+        "net_contents": "750 mL",
+        "producer": "Copper Hollow Distilling Co., 412 Millrace Road, Bardstown, Kentucky 40004",
+        "origin_country": null,
+        "is_import": false
+      },
+      "expected": {
+        "brand": [
+          "match"
+        ],
+        "class_type": [
+          "match"
+        ],
+        "abv": [
+          "match"
+        ],
+        "net_contents": [
+          "match"
+        ],
+        "producer": [
+          "match"
+        ],
+        "origin_country": [
+          "na"
+        ],
+        "warning": [
+          "match"
+        ]
+      }
+    },
+    {
+      "file": "labels/02-wine-clean.png",
+      "trap_case": 8,
+      "description": "Clean baseline: domestic red wine. Embodies trap 8 — domestic product with no country of origin on label -> origin N/A, not fail.",
+      "application": {
+        "brand": "Silverbrook Cellars",
+        "class_type": "Red Wine",
+        "abv": 13.5,
+        "net_contents": "750 mL",
+        "producer": "Silverbrook Cellars, 88 Orchard Bench Lane, Walla Walla, Washington 99362",
+        "origin_country": null,
+        "is_import": false
+      },
+      "expected": {
+        "brand": [
+          "match"
+        ],
+        "class_type": [
+          "match"
+        ],
+        "abv": [
+          "match"
+        ],
+        "net_contents": [
+          "match"
+        ],
+        "producer": [
+          "match"
+        ],
+        "origin_country": [
+          "na"
+        ],
+        "warning": [
+          "match"
+        ]
+      }
+    },
+    {
+      "file": "labels/03-beer-clean.png",
+      "trap_case": null,
+      "description": "Clean baseline: domestic IPA in fl oz.",
+      "application": {
+        "brand": "Granite Ledge",
+        "class_type": "India Pale Ale",
+        "abv": 6.5,
+        "net_contents": "12 fl oz",
+        "producer": "Granite Ledge Brewing Co., 27 Switchback Trail, Missoula, Montana 59802",
+        "origin_country": null,
+        "is_import": false
+      },
+      "expected": {
+        "brand": [
+          "match"
+        ],
+        "class_type": [
+          "match"
+        ],
+        "abv": [
+          "match"
+        ],
+        "net_contents": [
+          "match"
+        ],
+        "producer": [
+          "match"
+        ],
+        "origin_country": [
+          "na"
+        ],
+        "warning": [
+          "match"
+        ]
+      }
+    },
+    {
+      "file": "labels/04-gin-import-clean.png",
+      "trap_case": null,
+      "description": "Clean baseline: imported London dry gin with country-of-origin statement.",
+      "application": {
+        "brand": "Thorngate",
+        "class_type": "London Dry Gin",
+        "abv": 47.0,
+        "net_contents": "700 mL",
+        "producer": "Thorngate Distillery Ltd., Marsh Lane, London, England",
+        "origin_country": "England",
+        "is_import": true
+      },
+      "expected": {
+        "brand": [
+          "match"
+        ],
+        "class_type": [
+          "match"
+        ],
+        "abv": [
+          "match"
+        ],
+        "net_contents": [
+          "match"
+        ],
+        "producer": [
+          "match"
+        ],
+        "origin_country": [
+          "match"
+        ],
+        "warning": [
+          "match"
+        ]
+      }
+    },
+    {
+      "file": "labels/05-brand-case-fuzzy.png",
+      "trap_case": 1,
+      "description": "Trap 1: label brand STONE'S THROW (all caps, curly apostrophe) vs application 'Stone's Throw' -> brand match via case-insensitive fuzzy.",
+      "application": {
+        "brand": "Stone's Throw",
+        "class_type": "Straight Bourbon Whiskey",
+        "abv": 45.0,
+        "net_contents": "750 mL",
+        "producer": "Stone's Throw Distillers, 1 Quarry Bend Road, Frankfort, Kentucky 40601",
+        "origin_country": null,
+        "is_import": false
+      },
+      "expected": {
+        "brand": [
+          "match"
+        ],
+        "class_type": [
+          "match"
+        ],
+        "abv": [
+          "match"
+        ],
+        "net_contents": [
+          "match"
+        ],
+        "producer": [
+          "match"
+        ],
+        "origin_country": [
+          "na"
+        ],
+        "warning": [
+          "match"
+        ]
+      }
+    },
+    {
+      "file": "labels/06-warning-titlecase.png",
+      "trap_case": 2,
+      "description": "Trap 2: warning prefix rendered 'Government Warning:' (title case) -> warning fail on the ALL-CAPS rule; text otherwise verbatim.",
+      "application": {
+        "brand": "Blackpine Reserve",
+        "class_type": "Straight Bourbon Whiskey",
+        "abv": 46.0,
+        "net_contents": "750 mL",
+        "producer": "Blackpine Reserve Distilling, 310 Kilnhouse Avenue, Lexington, Kentucky 40507",
+        "origin_country": null,
+        "is_import": false
+      },
+      "expected": {
+        "brand": [
+          "match"
+        ],
+        "class_type": [
+          "match"
+        ],
+        "abv": [
+          "match"
+        ],
+        "net_contents": [
+          "match"
+        ],
+        "producer": [
+          "match"
+        ],
+        "origin_country": [
+          "na"
+        ],
+        "warning": [
+          "mismatch"
+        ]
+      }
+    },
+    {
+      "file": "labels/07-warning-word-swap.png",
+      "trap_case": 3,
+      "description": "Trap 3: warning clause 2 says 'might cause health problems' instead of 'may cause health problems' -> warning fail with clause diff.",
+      "application": {
+        "brand": "Redlands Ranch",
+        "class_type": "Zinfandel",
+        "abv": 14.2,
+        "net_contents": "750 mL",
+        "producer": "Redlands Ranch Winery, 740 Terrace Loop, Healdsburg, California 95448",
+        "origin_country": null,
+        "is_import": false
+      },
+      "expected": {
+        "brand": [
+          "match"
+        ],
+        "class_type": [
+          "match"
+        ],
+        "abv": [
+          "match"
+        ],
+        "net_contents": [
+          "match"
+        ],
+        "producer": [
+          "match"
+        ],
+        "origin_country": [
+          "na"
+        ],
+        "warning": [
+          "mismatch"
+        ]
+      }
+    },
+    {
+      "file": "labels/08-warning-cosmetic.png",
+      "trap_case": 4,
+      "description": "Trap 4: statutory warning verbatim but with double spaces and hard line breaks mid-clause; producer name uses a curly apostrophe vs straight in application -> warning match after whitespace/quote normalization.",
+      "application": {
+        "brand": "Mariner's Cove",
+        "class_type": "Rum with Natural Spices",
+        "abv": 52.0,
+        "net_contents": "750 mL",
+        "producer": "Mariner's Cove Distilling Co., 19 Drydock Street, Charleston, South Carolina 29401",
+        "origin_country": null,
+        "is_import": false
+      },
+      "expected": {
+        "brand": [
+          "match"
+        ],
+        "class_type": [
+          "match"
+        ],
+        "abv": [
+          "match"
+        ],
+        "net_contents": [
+          "match"
+        ],
+        "producer": [
+          "match"
+        ],
+        "origin_country": [
+          "na"
+        ],
+        "warning": [
+          "match"
+        ]
+      }
+    },
+    {
+      "file": "labels/09-proof-only.png",
+      "trap_case": 5,
+      "description": "Trap 5: label states alcohol content only as '90 Proof'; application says 45% -> abv match via proof = 2 x ABV conversion.",
+      "application": {
+        "brand": "Old Kestrel",
+        "class_type": "Straight Bourbon Whiskey",
+        "abv": 45.0,
+        "net_contents": "750 mL",
+        "producer": "Old Kestrel Distillery, 66 Creekstone Pike, Loretto, Kentucky 40037",
+        "origin_country": null,
+        "is_import": false
+      },
+      "expected": {
+        "brand": [
+          "match"
+        ],
+        "class_type": [
+          "match"
+        ],
+        "abv": [
+          "match"
+        ],
+        "net_contents": [
+          "match"
+        ],
+        "producer": [
+          "match"
+        ],
+        "origin_country": [
+          "na"
+        ],
+        "warning": [
+          "match"
+        ]
+      }
+    },
+    {
+      "file": "labels/10-abv-wrong.png",
+      "trap_case": 6,
+      "description": "Trap 6: label says 40% Alc./Vol.; application says 45% -> abv mismatch.",
+      "application": {
+        "brand": "Falling Water",
+        "class_type": "Vodka",
+        "abv": 45.0,
+        "net_contents": "750 mL",
+        "producer": "Falling Water Spirits LLC, 5150 Coldspring Parkway, Rochester, New York 14604",
+        "origin_country": null,
+        "is_import": false
+      },
+      "expected": {
+        "brand": [
+          "match"
+        ],
+        "class_type": [
+          "match"
+        ],
+        "abv": [
+          "mismatch"
+        ],
+        "net_contents": [
+          "match"
+        ],
+        "producer": [
+          "match"
+        ],
+        "origin_country": [
+          "na"
+        ],
+        "warning": [
+          "match"
+        ]
+      }
+    },
+    {
+      "file": "labels/11-netcontents-cl.png",
+      "trap_case": 7,
+      "description": "Trap 7a: label net contents '75 cL' vs application '750 mL' -> net contents match via unit normalization. Imported sparkling wine with matching origin.",
+      "application": {
+        "brand": "Velvet Antler",
+        "class_type": "Sparkling Wine",
+        "abv": 12.0,
+        "net_contents": "750 mL",
+        "producer": "Maison Velvet Antler, Epernay Region, France",
+        "origin_country": "France",
+        "is_import": true
+      },
+      "expected": {
+        "brand": [
+          "match"
+        ],
+        "class_type": [
+          "match"
+        ],
+        "abv": [
+          "match"
+        ],
+        "net_contents": [
+          "match"
+        ],
+        "producer": [
+          "match"
+        ],
+        "origin_country": [
+          "match"
+        ],
+        "warning": [
+          "match"
+        ]
+      }
+    },
+    {
+      "file": "labels/12-netcontents-wrong.png",
+      "trap_case": 7,
+      "description": "Trap 7b: label net contents 700 mL vs application 750 mL -> net contents mismatch (outside 1% tolerance).",
+      "application": {
+        "brand": "Juniper Flats",
+        "class_type": "Dry Gin",
+        "abv": 44.0,
+        "net_contents": "750 mL",
+        "producer": "Juniper Flats Botanical Works, 902 Alkali Basin Road, Bend, Oregon 97701",
+        "origin_country": null,
+        "is_import": false
+      },
+      "expected": {
+        "brand": [
+          "match"
+        ],
+        "class_type": [
+          "match"
+        ],
+        "abv": [
+          "match"
+        ],
+        "net_contents": [
+          "mismatch"
+        ],
+        "producer": [
+          "match"
+        ],
+        "origin_country": [
+          "na"
+        ],
+        "warning": [
+          "match"
+        ]
+      }
+    },
+    {
+      "file": "labels/13-import-missing-origin.png",
+      "trap_case": 9,
+      "description": "Trap 9: application marks the product as an import from Scotland but the label carries no country-of-origin statement -> origin mismatch.",
+      "application": {
+        "brand": "Peatsmoke Hollow",
+        "class_type": "Single Malt Whisky",
+        "abv": 43.0,
+        "net_contents": "750 mL",
+        "producer": "Peatsmoke Hollow Distillery",
+        "origin_country": "Scotland",
+        "is_import": true
+      },
+      "expected": {
+        "brand": [
+          "match"
+        ],
+        "class_type": [
+          "match"
+        ],
+        "abv": [
+          "match"
+        ],
+        "net_contents": [
+          "match"
+        ],
+        "producer": [
+          "match"
+        ],
+        "origin_country": [
+          "mismatch"
+        ],
+        "warning": [
+          "match"
+        ]
+      }
+    },
+    {
+      "file": "labels/14-classtype-wrong.png",
+      "trap_case": null,
+      "description": "Class/type mismatch: label says Kentucky Straight Bourbon Whiskey; application says Straight Rye Whiskey -> class_type mismatch (F2 fuzzy fail path).",
+      "application": {
+        "brand": "Six Bridges",
+        "class_type": "Straight Rye Whiskey",
+        "abv": 47.5,
+        "net_contents": "750 mL",
+        "producer": "Six Bridges Distilling Co., 48 Ferry Landing Road, Louisville, Kentucky 40202",
+        "origin_country": null,
+        "is_import": false
+      },
+      "expected": {
+        "brand": [
+          "match"
+        ],
+        "class_type": [
+          "mismatch"
+        ],
+        "abv": [
+          "match"
+        ],
+        "net_contents": [
+          "match"
+        ],
+        "producer": [
+          "match"
+        ],
+        "origin_country": [
+          "na"
+        ],
+        "warning": [
+          "match"
+        ]
+      }
+    },
+    {
+      "file": "labels/15-bourbon-angled.png",
+      "trap_case": 10,
+      "description": "Trap 10 / robustness: label 01 photographed at an angle (rotation + perspective skew). Fields may fall to review; never a wrong definitive verdict.",
+      "application": {
+        "brand": "Copper Hollow",
+        "class_type": "Kentucky Straight Bourbon Whiskey",
+        "abv": 45.0,
+        "net_contents": "750 mL",
+        "producer": "Copper Hollow Distilling Co., 412 Millrace Road, Bardstown, Kentucky 40004",
+        "origin_country": null,
+        "is_import": false
+      },
+      "expected": {
+        "brand": [
+          "match",
+          "review"
+        ],
+        "class_type": [
+          "match",
+          "review"
+        ],
+        "abv": [
+          "match",
+          "review"
+        ],
+        "net_contents": [
+          "match",
+          "review"
+        ],
+        "producer": [
+          "match",
+          "review"
+        ],
+        "origin_country": [
+          "na",
+          "review"
+        ],
+        "warning": [
+          "match",
+          "review"
+        ]
+      }
+    },
+    {
+      "file": "labels/16-bourbon-glare.png",
+      "trap_case": 10,
+      "description": "Trap 10 / robustness: label 01 with a glare hotspot and slight blur. Fields may fall to review; never a wrong definitive verdict.",
+      "application": {
+        "brand": "Copper Hollow",
+        "class_type": "Kentucky Straight Bourbon Whiskey",
+        "abv": 45.0,
+        "net_contents": "750 mL",
+        "producer": "Copper Hollow Distilling Co., 412 Millrace Road, Bardstown, Kentucky 40004",
+        "origin_country": null,
+        "is_import": false
+      },
+      "expected": {
+        "brand": [
+          "match",
+          "review"
+        ],
+        "class_type": [
+          "match",
+          "review"
+        ],
+        "abv": [
+          "match",
+          "review"
+        ],
+        "net_contents": [
+          "match",
+          "review"
+        ],
+        "producer": [
+          "match",
+          "review"
+        ],
+        "origin_country": [
+          "na",
+          "review"
+        ],
+        "warning": [
+          "match",
+          "review"
+        ]
+      }
+    }
+  ]
+}
