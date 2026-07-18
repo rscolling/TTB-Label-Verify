@@ -63,6 +63,9 @@
     fileName.textContent = file.name;
     dropzoneEmpty.hidden = true;
     dropzonePreview.hidden = false;
+    // A new photo starts a new check: clear any previous verdicts and errors
+    // so stale results never sit next to a photo they don't describe.
+    results.hidden = true;
     hideError();
   }
 
@@ -113,6 +116,9 @@
   function showError(message) {
     errorMessage.textContent = message;
     errorCallout.hidden = false;
+    // Move focus so screen readers announce the problem (aria role=alert is
+    // the backup); callers that focus a specific field do so after this.
+    errorCallout.focus({ preventScroll: false });
   }
 
   function hideError() {
@@ -132,9 +138,10 @@
     return text.slice(0, max - 1) + "…";
   }
 
-  function valueCell(value) {
+  function valueCell(value, label) {
     var td = document.createElement("td");
     td.className = "value-cell";
+    td.setAttribute("data-label", label);
     if (value === null || value === undefined || value === "") {
       td.textContent = "—";
       td.className += " muted";
@@ -215,14 +222,16 @@
       var verdict = VERDICTS[field.verdict] || VERDICTS.review;
       var verdictCell = document.createElement("td");
       verdictCell.className = "verdict verdict-" + field.verdict;
+      verdictCell.setAttribute("data-label", "Result");
       verdictCell.textContent = verdict.icon + " " + verdict.text;
       row.appendChild(verdictCell);
 
-      row.appendChild(valueCell(field.extracted));
-      row.appendChild(valueCell(field.expected));
+      row.appendChild(valueCell(field.extracted, "On the label"));
+      row.appendChild(valueCell(field.expected, "On the application"));
 
       var reasonCell = document.createElement("td");
       reasonCell.className = "reason-cell";
+      reasonCell.setAttribute("data-label", "Explanation");
       reasonCell.textContent = field.reason || "";
       if (
         key === "government_warning" &&
@@ -239,6 +248,9 @@
 
     results.hidden = false;
     results.scrollIntoView({ behavior: "smooth", block: "start" });
+    // Move focus to the outcome banner so screen readers announce the result
+    // as soon as it appears (aria-live on the section is the backup).
+    banner.focus({ preventScroll: false });
   }
 
   /* ---------- submit ---------- */

@@ -102,7 +102,7 @@
         <span class="spinner" aria-hidden="true"></span>
         <span>Reading the label&hellip; this usually takes a few seconds.</span>
       </div>
-      <div id="error-callout" class="callout callout-error" role="alert" hidden>
+      <div id="error-callout" class="callout callout-error" role="alert" tabindex="-1" hidden>
         <p class="callout-title">We couldn&rsquo;t check this label</p>
         <p id="error-message"></p>
       </div>
@@ -110,7 +110,7 @@
 
     <section id="results" class="results" aria-live="polite" aria-labelledby="results-heading" hidden>
       <h2 id="results-heading" class="visually-hidden">Results</h2>
-      <div id="banner" class="banner">
+      <div id="banner" class="banner" tabindex="-1">
         <span id="banner-icon" class="banner-icon" aria-hidden="true"></span>
         <div>
           <p id="banner-text" class="banner-text"></p>
@@ -232,7 +232,7 @@
             <span id="batch-progress-text">Checking&hellip;</span></p>
           <progress id="batch-progress-bar" max="1" value="0"></progress>
         </div>
-        <div id="batch-error" class="callout callout-error" role="alert" hidden>
+        <div id="batch-error" class="callout callout-error" role="alert" tabindex="-1" hidden>
           <p class="callout-title">We couldn&rsquo;t check these labels</p>
           <p id="batch-error-message"></p>
         </div>
@@ -240,7 +240,7 @@
 
       <section id="batch-results" class="results" aria-live="polite" aria-labelledby="batch-results-heading" hidden>
         <h2 id="batch-results-heading" class="visually-hidden">Batch results</h2>
-        <div id="batch-banner" class="banner">
+        <div id="batch-banner" class="banner" tabindex="-1">
           <span id="batch-banner-icon" class="banner-icon" aria-hidden="true"></span>
           <div>
             <p id="batch-banner-text" class="banner-text"></p>

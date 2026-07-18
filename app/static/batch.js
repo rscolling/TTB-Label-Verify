@@ -50,6 +50,17 @@
   tabSingle.addEventListener("click", function () { selectTab("single"); });
   tabBatch.addEventListener("click", function () { selectTab("batch"); });
 
+  // Arrow keys move between the two tabs (standard tablist keyboard pattern).
+  [tabSingle, tabBatch].forEach(function (tab) {
+    tab.addEventListener("keydown", function (event) {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") { return; }
+      event.preventDefault();
+      var other = tab === tabSingle ? tabBatch : tabSingle;
+      other.focus();
+      other.click();
+    });
+  });
+
   /* ---------- elements ---------- */
 
   var form = document.getElementById("batch-form");
@@ -158,6 +169,8 @@
   function showError(message) {
     errorMessage.textContent = message;
     errorCallout.hidden = false;
+    // Focus the callout so screen readers announce it (role=alert is backup).
+    errorCallout.focus({ preventScroll: false });
   }
 
   function hideError() {
@@ -207,6 +220,7 @@
         head.appendChild(th);
       });
     table.appendChild(head);
+    var CELL_LABELS = ["", "Result", "On the label", "On the application", "Explanation"];
     FIELD_ORDER.forEach(function (key) {
       var field = entry.fields[key];
       if (!field) { return; }
@@ -219,7 +233,9 @@
        field.reason || ""].forEach(function (value, index) {
         var td = document.createElement("td");
         td.textContent = value;
+        if (index === 0) { td.className = "field-name"; }
         if (index === 1) { td.className = "verdict verdict-" + field.verdict; }
+        if (CELL_LABELS[index]) { td.setAttribute("data-label", CELL_LABELS[index]); }
         row.appendChild(td);
       });
       table.appendChild(row);
@@ -236,6 +252,7 @@
     row.appendChild(nameCell);
 
     var verdictCell = document.createElement("td");
+    verdictCell.setAttribute("data-label", "Result");
     if (entry.error) {
       verdictCell.className = "verdict verdict-review";
       verdictCell.textContent = "⚠️ Couldn't check";
@@ -248,6 +265,7 @@
 
     var reasonCell = document.createElement("td");
     reasonCell.className = "reason-cell";
+    reasonCell.setAttribute("data-label", "What to look at");
     reasonCell.textContent = shorten(summaryReason(entry), 160);
     row.appendChild(reasonCell);
 
@@ -299,6 +317,9 @@
     if (counts.error > 0) { parts.push(counts.error + " couldn't be checked"); }
     bannerText.textContent = allResults.length + " labels checked — " + parts.join(", ");
     timing.textContent = "Finished in " + (totalTimeMs / 1000).toFixed(1) + " seconds.";
+    // Batch is done: move focus to the summary banner so screen readers
+    // announce completion (aria-live on the section is the backup).
+    banner.focus({ preventScroll: false });
   }
 
   /* ---------- CSV export (client-side, Excel-safe) ---------- */

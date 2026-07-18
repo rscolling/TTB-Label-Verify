@@ -299,6 +299,11 @@ main { padding-top: 2rem; }
   margin-bottom: 1.5rem;
 }
 
+/* Banners and callouts receive programmatic focus (tabindex="-1") so screen
+   readers announce outcomes; they aren't operable, so no focus ring. */
+.banner:focus,
+.callout:focus { outline: none; }
+
 .banner-icon { font-size: 2rem; line-height: 1; }
 .banner-text { margin: 0; font-size: 1.45rem; font-weight: 700; }
 .timing { margin: 0.15rem 0 0; color: var(--ink-soft); }
@@ -420,28 +425,37 @@ main { padding-top: 2rem; }
   border: 0;
 }
 
-/* ---------- mode tabs (one label vs many) ---------- */
+/* ---------- mode tabs (one label vs many) ----------
+   A large, centered segmented control so the choice between the two flows is
+   obvious at a glance (R5). One accent color; the active segment is solid
+   navy so it never relies on subtle contrast. */
 
 .mode-tabs {
   display: flex;
-  gap: 0.75rem;
-  margin-bottom: 1.75rem;
+  gap: 0.35rem;
+  justify-content: center;
+  max-width: 38rem;
+  margin: 0 auto 2rem;
+  padding: 0.35rem;
+  background: #fff;
+  border: 2px solid var(--accent);
+  border-radius: 12px;
 }
 
 .mode-tab {
   flex: 1;
   font: inherit;
-  font-size: 1.15rem;
-  font-weight: 600;
-  padding: 0.85rem 1rem;
-  border: 2px solid var(--accent);
+  font-size: 1.2rem;
+  font-weight: 700;
+  padding: 0.9rem 1.25rem;
+  border: none;
   border-radius: 8px;
-  background: #fff;
+  background: transparent;
   color: var(--accent);
   cursor: pointer;
 }
 
-.mode-tab:hover { background: var(--accent-pale); }
+.mode-tab:hover:not(.active) { background: var(--accent-pale); }
 
 .mode-tab.active {
   background: var(--accent);
@@ -451,6 +465,8 @@ main { padding-top: 2rem; }
 .mode-tab:focus-visible {
   outline: 3px solid var(--focus);
   outline-offset: 2px;
+  position: relative;
+  z-index: 1;
 }
 
 /* ---------- batch panel ---------- */
@@ -555,4 +571,80 @@ main { padding-top: 2rem; }
   .results-layout { grid-template-columns: 1fr; }
   .result-figure { max-width: 20rem; margin: 0 auto; }
   .site-header h1 { font-size: 1.7rem; }
+
+  /* Narrow screens: results tables become stacked "one card per row" lists so
+     the Explanation column is always readable — no horizontal scrolling. */
+  .table-scroll { overflow-x: visible; }
+
+  #results-table,
+  #batch-results-table,
+  .detail-table {
+    min-width: 0;
+    table-layout: auto;
+    border: none;
+    background: none;
+  }
+
+  #results-table thead,
+  #batch-results-table thead,
+  .detail-table th { display: none; }
+
+  #results-table, #results-table tbody, #results-table tr, #results-table td,
+  #batch-results-table, #batch-results-table tbody, #batch-results-table tr,
+  #batch-results-table td,
+  .detail-table, .detail-table tbody, .detail-table tr, .detail-table td {
+    display: block;
+    width: 100%;
+  }
+
+  #results-table tbody tr,
+  #batch-results-table tbody > tr {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    padding: 0.35rem 0 0.5rem;
+  }
+
+  #results-table td,
+  #batch-results-table td { border-bottom: none; padding: 0.5rem 0.9rem; }
+
+  #results-table td.field-name,
+  #batch-results-table td.field-name {
+    font-size: 1.1rem;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 0.5rem;
+    margin-bottom: 0.25rem;
+  }
+
+  /* Each stacked value announces which column it came from. */
+  td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--accent-dark);
+  }
+
+  /* The batch detail row hugs the card it belongs to. */
+  #batch-results-table tbody > tr.detail-row {
+    margin-top: -1rem;
+    border-top: none;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+    background: var(--paper);
+  }
+
+  .detail-table { background: none; border: none; }
+  .detail-table tr:first-child { display: none; } /* the (hidden-th) header row */
+  .detail-table tr {
+    border: none;
+    border-bottom: 1px dashed var(--line);
+    padding: 0.35rem 0;
+  }
+  .detail-table tr:last-child { border-bottom: none; }
+  .detail-table td { border-bottom: none; padding: 0.25rem 0.5rem; }
+  .detail-table td.field-name { border-bottom: none; font-weight: 700; }
 }

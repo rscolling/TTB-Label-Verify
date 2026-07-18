@@ -271,11 +271,13 @@ class TestAdversarialSubmit:
         )
         # Now choose a different photo WITHOUT re-checking. Does the old verdict
         # panel stay on screen next to the new photo? (Potential UX confusion.)
-        page.set_input_files("#file-input", str(SAMPLE_LABEL))
+        # NB: this must be a genuinely different file — Chromium fires no
+        # change event when set_input_files re-sets the identical FileList.
+        page.set_input_files("#file-input", str(SAMPLE_LABEL.with_name("02-wine-clean.png")))
         results_still_visible = page.locator("#results").is_visible()
-        # This asserts the CURRENT behavior so a regression here is caught; the
-        # finding (stale panel remains) is documented in the QA report.
-        assert results_still_visible is True
+        # QA finding #2 FIXED: selecting a new photo now clears the previous
+        # verdict panel, so a stale result can never sit next to a new photo.
+        assert results_still_visible is False
 
 
 class TestImportCheckboxState:
