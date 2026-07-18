@@ -12,104 +12,71 @@
       <p class="agency">Alcohol and Tobacco Tax and Trade Bureau — Prototype</p>
       <h1>Label Checker</h1>
       <p class="tagline">
-        Add a photo of the label, type in what the application says, and we&rsquo;ll
-        compare them for you.
+        Drop in the label photos and the submittal form, then scan. Every label
+        gets a row in the worksheet — anything that doesn&rsquo;t match is flagged
+        for you to review.
       </p>
     </div>
   </header>
 
   <main class="wrap">
-    <div class="mode-tabs" role="tablist" aria-label="How many labels to check">
-      <button type="button" id="tab-single" class="mode-tab active" role="tab"
-              aria-selected="true" aria-controls="single-panel">Check one label</button>
-      <button type="button" id="tab-batch" class="mode-tab" role="tab"
-              aria-selected="false" aria-controls="batch-panel">Check many labels</button>
-    </div>
-
-    <div id="single-panel" role="tabpanel" aria-label="Check one label">
-    <form id="verify-form" novalidate>
+    <form id="scan-form" novalidate>
       <section class="card" aria-labelledby="upload-heading">
-        <h2 id="upload-heading"><span class="step-num" aria-hidden="true">1</span> Add the label photo</h2>
+        <h2 id="upload-heading"><span class="step-num" aria-hidden="true">1</span> Add the label photos</h2>
         <div id="dropzone" class="dropzone">
-          <input type="file" id="file-input" accept="image/png,image/jpeg,image/webp,image/*" class="visually-hidden">
+          <input type="file" id="file-input" accept="image/png,image/jpeg,image/webp,image/*"
+                 multiple class="visually-hidden">
           <div id="dropzone-empty">
-            <p class="dropzone-title">Drag the photo here</p>
+            <p class="dropzone-title">Drag the photos here</p>
             <p class="dropzone-or">or</p>
-            <label for="file-input" class="button button-secondary">Choose a photo from your computer</label>
-            <p class="dropzone-hint">JPG or PNG photos work best.</p>
+            <label for="file-input" class="button button-secondary">Choose photos from your computer</label>
+            <p class="dropzone-hint">One photo or hundreds — up to 300 at a time. JPG or PNG work best.</p>
           </div>
-          <div id="dropzone-preview" hidden>
-            <img id="preview-image" alt="Preview of the label photo you chose">
-            <p id="file-name" class="file-name"></p>
-            <label for="file-input" class="button button-secondary">Choose a different photo</label>
+          <div id="dropzone-selected" hidden>
+            <p id="file-summary" class="file-name"></p>
+            <label for="file-input" class="button button-secondary">Choose different photos</label>
           </div>
         </div>
       </section>
 
-      <section class="card" aria-labelledby="form-heading">
-        <h2 id="form-heading"><span class="step-num" aria-hidden="true">2</span> Enter the application details</h2>
-        <p class="section-hint">Only the brand name is required. Fill in whatever else the application lists — we check what you provide.</p>
-
+      <section class="card" aria-labelledby="csv-heading">
+        <h2 id="csv-heading"><span class="step-num" aria-hidden="true">2</span> Add the submittal form (CSV)</h2>
         <div class="field">
-          <label for="brand">Brand name <span class="required-tag">(required)</span></label>
-          <input type="text" id="brand" name="brand" autocomplete="off" required>
-        </div>
-
-        <div class="field">
-          <label for="class_type">Kind of drink (class or type)</label>
-          <p class="field-hint" id="class-hint">For example: Kentucky Straight Bourbon Whiskey, Red Wine, India Pale Ale</p>
-          <input type="text" id="class_type" name="class_type" autocomplete="off" aria-describedby="class-hint">
-        </div>
-
-        <div class="field-row">
-          <div class="field">
-            <label for="abv">Alcohol content</label>
-            <p class="field-hint" id="abv-hint">For example: 45% or 90 proof</p>
-            <input type="text" id="abv" name="abv" autocomplete="off" aria-describedby="abv-hint">
-          </div>
-          <div class="field">
-            <label for="net_contents">Amount in the bottle (net contents)</label>
-            <p class="field-hint" id="net-hint">For example: 750 mL or 12 fl oz</p>
-            <input type="text" id="net_contents" name="net_contents" autocomplete="off" aria-describedby="net-hint">
-          </div>
-        </div>
-
-        <div class="field">
-          <label for="producer">Producer name and address</label>
-          <p class="field-hint" id="producer-hint">The company that makes or bottles it, as written on the application</p>
-          <input type="text" id="producer" name="producer" autocomplete="off" aria-describedby="producer-hint">
-        </div>
-
-        <div class="field checkbox-field">
-          <input type="checkbox" id="is_import" name="is_import">
-          <label for="is_import">This product is imported from another country</label>
-        </div>
-
-        <div class="field" id="origin-field" hidden>
-          <label for="origin_country">Country it comes from</label>
-          <p class="field-hint" id="origin-hint">For example: France</p>
-          <input type="text" id="origin_country" name="origin_country" autocomplete="off" aria-describedby="origin-hint">
+          <label for="csv-input">Submittal spreadsheet — one row per photo</label>
+          <p class="field-hint" id="csv-hint">
+            A CSV file with these columns: filename, brand, class_type, abv, net_contents,
+            producer, origin_country, is_import. We match each row to a photo by its file name.
+          </p>
+          <input type="file" id="csv-input" accept=".csv,text/csv" aria-describedby="csv-hint">
+          <p id="csv-status" class="field-hint" hidden></p>
+          <button type="button" id="csv-clear" class="button button-secondary" hidden>Remove the spreadsheet</button>
+          <p class="field-hint">
+            No spreadsheet? We&rsquo;ll still scan the photos and fill in what we read,
+            but every row will be flagged for human review — there&rsquo;s nothing to
+            check the labels against.
+          </p>
         </div>
       </section>
 
       <div class="submit-row">
-        <button type="submit" id="check-button" class="button button-primary">Check This Label</button>
+        <button type="submit" id="scan-button" class="button button-primary">Scan Labels</button>
       </div>
     </form>
 
     <div id="status" class="status" aria-live="polite">
-      <div id="progress" class="progress" hidden>
-        <span class="spinner" aria-hidden="true"></span>
-        <span>Reading the label&hellip; this usually takes a few seconds.</span>
+      <div id="progress-block" class="progress-block" hidden>
+        <p class="progress"><span class="spinner" aria-hidden="true"></span>
+          <span id="progress-text">Scanning&hellip;</span></p>
+        <progress id="progress-bar" max="1" value="0"></progress>
       </div>
       <div id="error-callout" class="callout callout-error" role="alert" tabindex="-1" hidden>
-        <p class="callout-title">We couldn&rsquo;t check this label</p>
+        <p class="callout-title">We couldn&rsquo;t scan these labels</p>
         <p id="error-message"></p>
       </div>
     </div>
 
     <section id="results" class="results" aria-live="polite" aria-labelledby="results-heading" hidden>
-      <h2 id="results-heading" class="visually-hidden">Results</h2>
+      <h2 id="results-heading" class="visually-hidden">Scan worksheet</h2>
       <div id="banner" class="banner" tabindex="-1">
         <span id="banner-icon" class="banner-icon" aria-hidden="true"></span>
         <div>
@@ -117,155 +84,34 @@
           <p id="timing" class="timing"></p>
         </div>
       </div>
-      <div class="results-layout">
-        <figure class="result-figure">
-          <img id="result-image" alt="The label photo that was checked">
-          <figcaption>The photo we checked</figcaption>
-        </figure>
-        <div class="table-scroll">
-          <table id="results-table">
-            <caption class="visually-hidden">Field-by-field comparison of the label and the application</caption>
-            <thead>
-              <tr>
-                <th scope="col">What we checked</th>
-                <th scope="col">Result</th>
-                <th scope="col">On the label</th>
-                <th scope="col">On the application</th>
-                <th scope="col">Explanation</th>
-              </tr>
-            </thead>
-            <tbody id="results-body"></tbody>
-          </table>
-        </div>
+      <div class="worksheet-toolbar">
+        <p class="worksheet-hint">Rows marked <span class="flag" aria-hidden="true">⚑</span> need a human look —
+          click a row (or its Review button) to see the photo and what didn&rsquo;t line up.</p>
+        <button type="button" id="download-csv" class="button button-secondary">Download results (CSV)</button>
+      </div>
+      <div class="table-scroll">
+        <table id="worksheet">
+          <caption class="visually-hidden">Scan worksheet: one row per label photo with extracted fields, score, and pass or fail</caption>
+          <thead>
+            <tr>
+              <th scope="col">Serial</th>
+              <th scope="col">Scanned at</th>
+              <th scope="col">Photo</th>
+              <th scope="col">Brand name</th>
+              <th scope="col">Kind of drink</th>
+              <th scope="col">Alcohol content</th>
+              <th scope="col">Amount in bottle</th>
+              <th scope="col">Producer</th>
+              <th scope="col">Country of origin</th>
+              <th scope="col">Health warning</th>
+              <th scope="col">Score</th>
+              <th scope="col">Result</th>
+            </tr>
+          </thead>
+          <tbody id="worksheet-body"></tbody>
+        </table>
       </div>
     </section>
-    </div><!-- /single-panel -->
-
-    <div id="batch-panel" role="tabpanel" aria-label="Check many labels" hidden>
-      <form id="batch-form" novalidate>
-        <section class="card" aria-labelledby="batch-upload-heading">
-          <h2 id="batch-upload-heading"><span class="step-num" aria-hidden="true">1</span> Add all the label photos</h2>
-          <div id="batch-dropzone" class="dropzone">
-            <input type="file" id="batch-file-input" accept="image/png,image/jpeg,image/webp,image/*"
-                   multiple class="visually-hidden">
-            <div id="batch-dropzone-empty">
-              <p class="dropzone-title">Drag all the photos here</p>
-              <p class="dropzone-or">or</p>
-              <label for="batch-file-input" class="button button-secondary">Choose photos from your computer</label>
-              <p class="dropzone-hint">You can add up to 300 photos at a time.</p>
-            </div>
-            <div id="batch-dropzone-selected" hidden>
-              <p id="batch-file-summary" class="file-name"></p>
-              <label for="batch-file-input" class="button button-secondary">Choose different photos</label>
-            </div>
-          </div>
-        </section>
-
-        <section class="card" aria-labelledby="batch-form-heading">
-          <h2 id="batch-form-heading"><span class="step-num" aria-hidden="true">2</span> Add the application details</h2>
-          <p class="section-hint">
-            If every photo has its own application, add a spreadsheet (CSV file) with one
-            row per photo. If they all share the same application, skip the spreadsheet
-            and type the details once below.
-          </p>
-
-          <div class="field">
-            <label for="manifest-input">Spreadsheet with one row per photo (optional)</label>
-            <p class="field-hint" id="manifest-hint">
-              A CSV file with these columns: filename, brand, class_type, abv, net_contents,
-              producer, origin_country, is_import. We match each row to a photo by its file name.
-            </p>
-            <input type="file" id="manifest-input" accept=".csv,text/csv" aria-describedby="manifest-hint">
-            <p id="manifest-status" class="field-hint" hidden></p>
-            <button type="button" id="manifest-clear" class="button button-secondary" hidden>Remove the spreadsheet</button>
-          </div>
-
-          <fieldset id="batch-shared-fields" class="shared-fields">
-            <legend class="section-hint">Or use the same details for every photo:</legend>
-
-            <div class="field">
-              <label for="batch_brand">Brand name <span class="required-tag">(required without a spreadsheet)</span></label>
-              <input type="text" id="batch_brand" name="brand" autocomplete="off">
-            </div>
-
-            <div class="field">
-              <label for="batch_class_type">Kind of drink (class or type)</label>
-              <input type="text" id="batch_class_type" name="class_type" autocomplete="off">
-            </div>
-
-            <div class="field-row">
-              <div class="field">
-                <label for="batch_abv">Alcohol content</label>
-                <input type="text" id="batch_abv" name="abv" autocomplete="off">
-              </div>
-              <div class="field">
-                <label for="batch_net_contents">Amount in the bottle (net contents)</label>
-                <input type="text" id="batch_net_contents" name="net_contents" autocomplete="off">
-              </div>
-            </div>
-
-            <div class="field">
-              <label for="batch_producer">Producer name and address</label>
-              <input type="text" id="batch_producer" name="producer" autocomplete="off">
-            </div>
-
-            <div class="field checkbox-field">
-              <input type="checkbox" id="batch_is_import" name="is_import">
-              <label for="batch_is_import">These products are imported from another country</label>
-            </div>
-
-            <div class="field" id="batch-origin-field" hidden>
-              <label for="batch_origin_country">Country they come from</label>
-              <input type="text" id="batch_origin_country" name="origin_country" autocomplete="off">
-            </div>
-          </fieldset>
-        </section>
-
-        <div class="submit-row">
-          <button type="submit" id="batch-check-button" class="button button-primary">Check All Labels</button>
-        </div>
-      </form>
-
-      <div id="batch-status" class="status" aria-live="polite">
-        <div id="batch-progress" class="progress-block" hidden>
-          <p class="progress"><span class="spinner" aria-hidden="true"></span>
-            <span id="batch-progress-text">Checking&hellip;</span></p>
-          <progress id="batch-progress-bar" max="1" value="0"></progress>
-        </div>
-        <div id="batch-error" class="callout callout-error" role="alert" tabindex="-1" hidden>
-          <p class="callout-title">We couldn&rsquo;t check these labels</p>
-          <p id="batch-error-message"></p>
-        </div>
-      </div>
-
-      <section id="batch-results" class="results" aria-live="polite" aria-labelledby="batch-results-heading" hidden>
-        <h2 id="batch-results-heading" class="visually-hidden">Batch results</h2>
-        <div id="batch-banner" class="banner" tabindex="-1">
-          <span id="batch-banner-icon" class="banner-icon" aria-hidden="true"></span>
-          <div>
-            <p id="batch-banner-text" class="banner-text"></p>
-            <p id="batch-timing" class="timing"></p>
-          </div>
-        </div>
-        <div class="batch-toolbar">
-          <button type="button" id="batch-download" class="button button-secondary">Download results (CSV)</button>
-        </div>
-        <div class="table-scroll">
-          <table id="batch-results-table">
-            <caption class="visually-hidden">Result for each label photo</caption>
-            <thead>
-              <tr>
-                <th scope="col">Photo</th>
-                <th scope="col">Result</th>
-                <th scope="col">What to look at</th>
-                <th scope="col"><span class="visually-hidden">Details</span></th>
-              </tr>
-            </thead>
-            <tbody id="batch-results-body"></tbody>
-          </table>
-        </div>
-      </section>
-    </div><!-- /batch-panel -->
   </main>
 
   <footer class="site-footer">
@@ -276,6 +122,5 @@
   </footer>
 
   <script src="/static/app.js"></script>
-  <script src="/static/batch.js"></script>
 </body>
 </html>

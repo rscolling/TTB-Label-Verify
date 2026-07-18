@@ -1,6 +1,7 @@
 /* TTB Label Checker — calm, high-contrast, large-type styles.
    Design goals (R5): 17px+ base type, one accent color, obvious controls,
-   never color alone for meaning. No external fonts or resources (offline). */
+   never color alone for meaning. No external fonts or resources (offline).
+   WP5: one unified flow — dropzone + submittal CSV + scan worksheet. */
 
 :root {
   --ink: #1b1b1b;
@@ -29,7 +30,7 @@ body {
 }
 
 .wrap {
-  max-width: 62rem;
+  max-width: 72rem;
   margin: 0 auto;
   padding: 0 1.25rem;
 }
@@ -59,7 +60,7 @@ body {
 .site-header .tagline {
   margin: 0;
   font-size: 1.1rem;
-  max-width: 42rem;
+  max-width: 46rem;
   opacity: 0.95;
 }
 
@@ -106,11 +107,6 @@ main { padding-top: 2rem; }
   justify-content: center;
 }
 
-.section-hint {
-  margin: 0 0 1.25rem;
-  color: var(--ink-soft);
-}
-
 /* ---------- dropzone ---------- */
 
 .dropzone {
@@ -129,19 +125,11 @@ main { padding-top: 2rem; }
 .dropzone-or { margin: 0.5rem 0; color: var(--ink-soft); }
 .dropzone-hint { margin: 0.9rem 0 0; color: var(--ink-soft); font-size: 0.95rem; }
 
-#dropzone-preview img {
-  max-width: 100%;
-  max-height: 320px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: #fff;
-}
-
 .file-name { margin: 0.6rem 0 0.9rem; font-weight: 600; word-break: break-all; }
 
-/* ---------- form fields ---------- */
+/* ---------- form fields (submittal CSV slot) ---------- */
 
-.field { margin-bottom: 1.25rem; }
+.field { margin-bottom: 0.5rem; }
 
 .field label {
   display: block;
@@ -155,43 +143,20 @@ main { padding-top: 2rem; }
   font-size: 0.95rem;
 }
 
-.required-tag { font-weight: 400; color: var(--ink-soft); }
-
-.field input[type="text"] {
-  width: 100%;
+#csv-input {
   font: inherit;
-  padding: 0.65rem 0.75rem;
-  border: 1px solid #8d8d86;
-  border-radius: 6px;
-  background: #fff;
-  color: var(--ink);
+  font-size: 1rem;
+  margin-bottom: 0.5rem;
 }
 
-.field input[type="text"]:focus,
-.checkbox-field input:focus-visible {
+#csv-input:focus-visible {
   outline: 3px solid var(--focus);
   outline-offset: 1px;
 }
 
-.field-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1.25rem;
-}
+#csv-status { font-weight: 600; color: var(--accent-dark); }
 
-.checkbox-field {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-}
-
-.checkbox-field input[type="checkbox"] {
-  width: 1.4rem;
-  height: 1.4rem;
-  accent-color: var(--accent);
-}
-
-.checkbox-field label { margin: 0; font-weight: 600; }
+#csv-clear { margin: 0.25rem 0 0.75rem; }
 
 /* ---------- buttons ---------- */
 
@@ -229,9 +194,7 @@ main { padding-top: 2rem; }
 
 .button-secondary:hover { background: var(--accent-pale); }
 
-.button:focus-visible,
-.visually-hidden:focus-visible + * .button,
-#file-input:focus-visible ~ * label.button {
+.button:focus-visible {
   outline: 3px solid var(--focus);
   outline-offset: 2px;
 }
@@ -269,6 +232,17 @@ main { padding-top: 2rem; }
   .spinner { animation-duration: 2.5s; }
 }
 
+.progress-block { margin: 1.5rem 0; text-align: center; }
+
+.progress-block .progress { margin: 0 0 0.6rem; }
+
+#progress-bar {
+  width: 100%;
+  max-width: 30rem;
+  height: 1.1rem;
+  accent-color: var(--accent);
+}
+
 .callout {
   border-radius: 8px;
   padding: 1rem 1.25rem;
@@ -286,7 +260,7 @@ main { padding-top: 2rem; }
 .callout-title { margin: 0 0 0.25rem; font-weight: 700; }
 .callout p:last-child { margin-bottom: 0; }
 
-/* ---------- results ---------- */
+/* ---------- summary banner ---------- */
 
 .banner {
   display: flex;
@@ -299,10 +273,12 @@ main { padding-top: 2rem; }
   margin-bottom: 1.5rem;
 }
 
-/* Banners and callouts receive programmatic focus (tabindex="-1") so screen
-   readers announce outcomes; they aren't operable, so no focus ring. */
+/* Banners, callouts, and the detail panel receive programmatic focus
+   (tabindex="-1") so screen readers announce them; they aren't operable
+   as a whole, so no focus ring. */
 .banner:focus,
-.callout:focus { outline: none; }
+.callout:focus,
+.detail-panel:focus { outline: none; }
 
 .banner-icon { font-size: 2rem; line-height: 1; }
 .banner-text { margin: 0; font-size: 1.45rem; font-weight: 700; }
@@ -315,85 +291,236 @@ main { padding-top: 2rem; }
 .banner-mismatch { background: var(--bad-bg); border-color: var(--bad-border); }
 .banner-mismatch .banner-text { color: var(--bad-ink); }
 
-.results-layout {
-  display: grid;
-  grid-template-columns: 13rem 1fr;
-  gap: 1.5rem;
-  align-items: start;
+/* ---------- worksheet ---------- */
+
+.worksheet-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
 }
 
-.result-figure {
-  margin: 0;
-  text-align: center;
-}
-
-.result-figure img {
-  width: 100%;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #fff;
-}
-
-.result-figure figcaption {
-  margin-top: 0.4rem;
-  color: var(--ink-soft);
-  font-size: 0.95rem;
-}
+.worksheet-hint { margin: 0; color: var(--ink-soft); font-size: 0.95rem; }
 
 .table-scroll { overflow-x: auto; }
 
-#results-table {
+#worksheet {
   width: 100%;
-  min-width: 38rem;
-  table-layout: fixed;
+  min-width: 72rem;
   border-collapse: collapse;
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: 8px;
 }
 
-/* column widths: field / result / label value / application value / explanation */
-#results-table th:nth-child(1) { width: 15%; }
-#results-table th:nth-child(2) { width: 13%; }
-#results-table th:nth-child(3) { width: 21%; }
-#results-table th:nth-child(4) { width: 21%; }
-#results-table th:nth-child(5) { width: 30%; }
-
-#results-table th,
-#results-table td {
+#worksheet th,
+#worksheet td {
   text-align: left;
   vertical-align: top;
-  padding: 0.75rem 0.9rem;
+  padding: 0.6rem 0.7rem;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.95rem;
+}
+
+#worksheet thead th {
+  background: var(--accent-pale);
+  color: var(--accent-dark);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+/* Opaque cell backgrounds so the sticky Result column never shows content
+   sliding beneath it. */
+#worksheet td { background: var(--card); }
+
+.worksheet-row { cursor: pointer; }
+#worksheet tr.worksheet-row:hover td { background: #eef2f9; }
+
+/* Flagged rows: tint + flag icon — obvious at a scroll-past glance. */
+#worksheet tr.row-fail td { background: var(--bad-bg); }
+#worksheet tr.row-fail:hover td { background: #f6dcdc; }
+#worksheet tr.row-review td,
+#worksheet tr.row-error td { background: var(--warn-bg); }
+#worksheet tr.row-review:hover td,
+#worksheet tr.row-error:hover td { background: #f8ead0; }
+
+/* The Result column (badge + Review button) stays pinned to the right edge
+   of the scroll container: pass/fail is visible at a glance even while the
+   wide worksheet scrolls horizontally. */
+#worksheet th:last-child,
+#worksheet tr.worksheet-row td:last-child {
+  position: sticky;
+  right: 0;
+  box-shadow: -8px 0 8px -8px rgba(0, 0, 0, 0.35);
+}
+
+.serial-cell { font-weight: 700; white-space: nowrap; }
+.flag { color: var(--bad-ink); }
+
+.time-cell {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-soft);
+}
+
+.photo-cell { min-width: 9rem; }
+
+.thumb {
+  display: block;
+  width: 3.4rem;
+  height: 3.4rem;
+  object-fit: cover;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #fff;
+  margin-bottom: 0.25rem;
+}
+
+.photo-name {
+  font-size: 0.85rem;
+  word-break: break-all;
+  color: var(--ink-soft);
+}
+
+.field-cell { min-width: 7.5rem; }
+
+.mark {
+  display: inline-block;
+  font-weight: 700;
+  margin-right: 0.35rem;
+}
+
+.mark-match    { color: var(--good-ink); }
+.mark-review   { color: var(--warn-ink); }
+.mark-mismatch { color: var(--bad-ink); }
+.mark-na       { color: var(--ink-soft); }
+
+.cell-value { overflow-wrap: break-word; }
+
+.error-cell { color: var(--bad-ink); font-weight: 600; }
+
+.score-cell { min-width: 7rem; }
+
+.status-cell { min-width: 6.5rem; }
+
+.status-badge {
+  display: inline-block;
+  font-weight: 800;
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  border: 2px solid;
+  white-space: nowrap;
+}
+
+.status-pass   { background: var(--good-bg); border-color: var(--good-border); color: var(--good-ink); }
+.status-fail   { background: #fff; border-color: var(--bad-border); color: var(--bad-ink); }
+.status-review { background: #fff; border-color: var(--warn-border); color: var(--warn-ink); }
+.status-error  { background: #fff; border-color: var(--warn-border); color: var(--warn-ink); }
+
+.review-button {
+  display: block;
+  font-size: 0.9rem;
+  padding: 0.35rem 0.9rem;
+  white-space: nowrap;
+  margin-top: 0.45rem;
+}
+
+/* ---------- review drill-down panel ---------- */
+
+.detail-row > td {
+  background: var(--paper);
+  padding: 1rem 1.1rem 1.25rem;
+}
+
+/* The detail row spans the full (horizontally scrollable) table width; the
+   panel itself pins to the LEFT edge and sizes to the visible area so the
+   photo + comparison are fully on screen without horizontal scrolling.
+   min(): the .wrap content width (72rem minus padding) or the viewport. */
+.detail-panel {
+  border-left: 6px solid var(--accent);
+  padding-left: 1rem;
+  position: sticky;
+  left: 0;
+  box-sizing: border-box;
+  width: min(calc(100vw - 5rem), 67rem);
+}
+
+.detail-header {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.detail-header h3 { margin: 0; font-size: 1.15rem; }
+
+.detail-stamp { margin: 0; color: var(--ink-soft); font-size: 0.95rem; }
+
+.detail-close { margin-left: auto; }
+
+.detail-layout {
+  display: grid;
+  grid-template-columns: 20rem 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.detail-figure { margin: 0; text-align: center; }
+
+.detail-figure img {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.detail-figure figcaption {
+  margin-top: 0.4rem;
+  color: var(--ink-soft);
+  font-size: 0.95rem;
+}
+
+.detail-error { margin: 0; font-weight: 600; color: var(--bad-ink); }
+
+.detail-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+}
+
+.detail-table th,
+.detail-table td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.5rem 0.7rem;
   border-bottom: 1px solid var(--line);
 }
 
-#results-table thead th {
+.detail-table th {
   background: var(--accent-pale);
   color: var(--accent-dark);
-  font-size: 0.95rem;
+  font-size: 0.85rem;
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
 
-#results-table tbody tr:last-child td { border-bottom: none; }
-
 .field-name { font-weight: 600; }
 
-.verdict { font-weight: 700; }
-.verdict-match    { color: var(--good-ink); }
-.verdict-review   { color: var(--warn-ink); }
-.verdict-mismatch { color: var(--bad-ink); }
-.verdict-na       { color: var(--ink-soft); font-weight: 600; }
+.verdict { font-weight: 700; white-space: nowrap; }
 
-.value-cell { overflow-wrap: break-word; }
-.reason-cell { overflow-wrap: break-word; }
 .muted { color: var(--ink-soft); }
 
 /* government-warning clause diff */
 .clause-diff {
-  margin-top: 0.6rem;
-  border-top: 1px dashed var(--line);
-  padding-top: 0.6rem;
+  margin-top: 0.3rem;
 }
 
 .clause-diff h4 { margin: 0 0 0.4rem; font-size: 1rem; }
@@ -425,180 +552,32 @@ main { padding-top: 2rem; }
   border: 0;
 }
 
-/* ---------- mode tabs (one label vs many) ----------
-   A large, centered segmented control so the choice between the two flows is
-   obvious at a glance (R5). One accent color; the active segment is solid
-   navy so it never relies on subtle contrast. */
-
-.mode-tabs {
-  display: flex;
-  gap: 0.35rem;
-  justify-content: center;
-  max-width: 38rem;
-  margin: 0 auto 2rem;
-  padding: 0.35rem;
-  background: #fff;
-  border: 2px solid var(--accent);
-  border-radius: 12px;
-}
-
-.mode-tab {
-  flex: 1;
-  font: inherit;
-  font-size: 1.2rem;
-  font-weight: 700;
-  padding: 0.9rem 1.25rem;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--accent);
-  cursor: pointer;
-}
-
-.mode-tab:hover:not(.active) { background: var(--accent-pale); }
-
-.mode-tab.active {
-  background: var(--accent);
-  color: #fff;
-}
-
-.mode-tab:focus-visible {
-  outline: 3px solid var(--focus);
-  outline-offset: 2px;
-  position: relative;
-  z-index: 1;
-}
-
-/* ---------- batch panel ---------- */
-
-.shared-fields {
-  border: none;
-  margin: 1.5rem 0 0;
-  padding: 1.25rem 0 0;
-  border-top: 1px dashed var(--line);
-}
-
-.shared-fields:disabled { opacity: 0.55; }
-
-.shared-fields legend { padding: 0 0 0.75rem; }
-
-#manifest-input {
-  font: inherit;
-  font-size: 1rem;
-}
-
-#manifest-status { font-weight: 600; color: var(--accent-dark); }
-
-#manifest-clear { margin-top: 0.5rem; }
-
-.progress-block { margin: 1.5rem 0; text-align: center; }
-
-.progress-block .progress { margin: 0 0 0.6rem; }
-
-#batch-progress-bar {
-  width: 100%;
-  max-width: 30rem;
-  height: 1.1rem;
-  accent-color: var(--accent);
-}
-
-.batch-toolbar {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 1rem;
-}
-
-#batch-results-table {
-  width: 100%;
-  min-width: 38rem;
-  border-collapse: collapse;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-}
-
-#batch-results-table th,
-#batch-results-table td {
-  text-align: left;
-  vertical-align: top;
-  padding: 0.75rem 0.9rem;
-  border-bottom: 1px solid var(--line);
-}
-
-#batch-results-table thead th {
-  background: var(--accent-pale);
-  color: var(--accent-dark);
-  font-size: 0.95rem;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-
-#batch-results-table th:nth-child(1) { width: 24%; }
-#batch-results-table th:nth-child(2) { width: 16%; }
-#batch-results-table th:nth-child(3) { width: 46%; }
-#batch-results-table th:nth-child(4) { width: 14%; }
-
-.detail-toggle { font-size: 0.9rem; padding: 0.35rem 0.8rem; white-space: nowrap; }
-
-.detail-row td { background: var(--paper); }
-
-.detail-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.95rem;
-  background: var(--card);
-  border: 1px solid var(--line);
-}
-
-.detail-table th,
-.detail-table td {
-  text-align: left;
-  vertical-align: top;
-  padding: 0.5rem 0.7rem;
-  border-bottom: 1px solid var(--line);
-}
-
-.detail-table th {
-  background: var(--accent-pale);
-  color: var(--accent-dark);
-  font-size: 0.85rem;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-
 @media (max-width: 46rem) {
-  .field-row { grid-template-columns: 1fr; }
-  .results-layout { grid-template-columns: 1fr; }
-  .result-figure { max-width: 20rem; margin: 0 auto; }
   .site-header h1 { font-size: 1.7rem; }
 
-  /* Narrow screens: results tables become stacked "one card per row" lists so
-     the Explanation column is always readable — no horizontal scrolling. */
+  .worksheet-toolbar { flex-direction: column; align-items: stretch; }
+
+  /* Narrow screens: the worksheet becomes stacked "one card per row" lists so
+     every column stays readable — no horizontal scrolling. */
   .table-scroll { overflow-x: visible; }
 
-  #results-table,
-  #batch-results-table,
+  #worksheet,
   .detail-table {
     min-width: 0;
-    table-layout: auto;
     border: none;
     background: none;
   }
 
-  #results-table thead,
-  #batch-results-table thead,
+  #worksheet thead,
   .detail-table th { display: none; }
 
-  #results-table, #results-table tbody, #results-table tr, #results-table td,
-  #batch-results-table, #batch-results-table tbody, #batch-results-table tr,
-  #batch-results-table td,
+  #worksheet, #worksheet tbody, #worksheet tr, #worksheet td,
   .detail-table, .detail-table tbody, .detail-table tr, .detail-table td {
     display: block;
     width: 100%;
   }
 
-  #results-table tbody tr,
-  #batch-results-table tbody > tr {
+  #worksheet tbody > tr.worksheet-row {
     background: var(--card);
     border: 1px solid var(--line);
     border-radius: 8px;
@@ -606,16 +585,33 @@ main { padding-top: 2rem; }
     padding: 0.35rem 0 0.5rem;
   }
 
-  #results-table td,
-  #batch-results-table td { border-bottom: none; padding: 0.5rem 0.9rem; }
+  /* The row tint moves to the card itself on mobile. */
+  #worksheet tbody > tr.row-fail { background: var(--bad-bg); border-color: var(--bad-border); }
+  #worksheet tbody > tr.row-review,
+  #worksheet tbody > tr.row-error { background: var(--warn-bg); border-color: var(--warn-border); }
+  #worksheet td,
+  #worksheet tr.row-fail td,
+  #worksheet tr.row-review td,
+  #worksheet tr.row-error td,
+  #worksheet tr.worksheet-row:hover td { background: none; }
 
-  #results-table td.field-name,
-  #batch-results-table td.field-name {
+  #worksheet td { border-bottom: none; padding: 0.45rem 0.9rem; }
+
+  /* Stacked cards don't scroll horizontally — no sticky column needed. */
+  #worksheet th:last-child,
+  #worksheet tr.worksheet-row td:last-child {
+    position: static;
+    box-shadow: none;
+  }
+
+  #worksheet td.serial-cell {
     font-size: 1.1rem;
     border-bottom: 1px solid var(--line);
     padding-bottom: 0.5rem;
     margin-bottom: 0.25rem;
   }
+
+  .thumb { width: 5rem; height: 5rem; }
 
   /* Each stacked value announces which column it came from. */
   td[data-label]::before {
@@ -628,14 +624,20 @@ main { padding-top: 2rem; }
     color: var(--accent-dark);
   }
 
-  /* The batch detail row hugs the card it belongs to. */
-  #batch-results-table tbody > tr.detail-row {
+  /* The drill-down hugs the card it belongs to. */
+  #worksheet tbody > tr.detail-row {
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 8px;
     margin-top: -1rem;
-    border-top: none;
     border-top-left-radius: 0;
     border-top-right-radius: 0;
-    background: var(--paper);
+    margin-bottom: 1rem;
   }
+
+  .detail-layout { grid-template-columns: 1fr; }
+  .detail-figure { max-width: 20rem; margin: 0 auto; }
+  .detail-panel { position: static; width: auto; }
 
   .detail-table { background: none; border: none; }
   .detail-table tr:first-child { display: none; } /* the (hidden-th) header row */
