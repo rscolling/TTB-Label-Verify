@@ -203,15 +203,24 @@ class TestChunkedProgress:
         open_batch_tab(page, base_url)
         page.set_input_files("#batch-file-input", label_paths(12))
         page.fill("#batch_brand", "Stone's Throw")
+        # Polling-based expect() can miss the short-lived intermediate state;
+        # record every progress-text mutation instead.
+        page.evaluate(
+            """() => {
+                window.__progressStates = [];
+                const node = document.querySelector('#batch-progress-text');
+                new MutationObserver(() => window.__progressStates.push(node.textContent))
+                    .observe(node, {childList: true, characterData: true, subtree: true});
+            }"""
+        )
         page.click("#batch-check-button")
 
-        playwright_api.expect(page.locator("#batch-progress-text")).to_have_text(
-            "Checked 10 of 12…", timeout=15_000
-        )
         playwright_api.expect(page.locator("#batch-banner-text")).to_have_text(
             "12 labels checked — 12 match", timeout=15_000
         )
         playwright_api.expect(result_rows(page)).to_have_count(12)
+        states = page.evaluate("() => window.__progressStates")
+        assert "Checked 10 of 12…" in states, f"intermediate chunk state never shown: {states}"
 
 
 class TestBatchErrorHandling:

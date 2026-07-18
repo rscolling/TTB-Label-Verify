@@ -612,7 +612,7 @@ def render_all() -> None:
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page(viewport={"width": 1200, "height": 1800},
-                                device_scale_factor=1)
+                                device_scale_factor=1.6)  # ~1600px wide: keeps the small-print warning legible to vision OCR
         for label in LABELS:
             html = render_html(label["spec"])
             page.set_content(html, wait_until="load")
