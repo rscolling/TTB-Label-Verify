@@ -5,6 +5,7 @@ No persistence — uploads are processed in memory and discarded (R8).
 
 from __future__ import annotations
 
+import asyncio
 import time
 from dataclasses import asdict
 from functools import lru_cache
@@ -16,6 +17,7 @@ from fastapi import Depends, FastAPI, File, Form, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.batch import MAX_BATCH_SIZE, ManifestError, batch_concurrency, normalize_filename, parse_manifest
 from app.extraction import BadImageError, ClaudeExtractor, ExtractionError, Extractor, prepare_image
 from app.models import ApplicationData
 from app.rules import overall_status, verify
@@ -36,6 +38,40 @@ def get_extractor() -> Extractor:
 
 def _error(status_code: int, code: str, message: str) -> JSONResponse:
     return JSONResponse(status_code=status_code, content={"error": {"code": code, "message": message}})
+
+
+class NoLabelError(Exception):
+    """The image decoded fine but no readable label was detected in it."""
+
+
+BAD_FILE_MESSAGE = (
+    "That file doesn't look like an image. Please upload a photo of the "
+    "label as a JPG or PNG and try again."
+)
+NO_LABEL_MESSAGE = (
+    "We couldn't read a label in this image. Try a straight-on, well-lit "
+    "photo where the label text fills most of the frame."
+)
+
+
+def run_label_check(image_bytes: bytes, application: ApplicationData, extractor: Extractor) -> dict[str, Any]:
+    """The single-label pipeline, shared verbatim by /api/verify and /api/verify-batch.
+
+    Raises BadImageError, ExtractionError, or NoLabelError; the callers map
+    those to their own error shapes (HTTP error vs per-label batch entry).
+    """
+    start = time.perf_counter()
+    prepare_image(image_bytes)  # validate early (and cheaply) -> friendly error
+    extracted = extractor.extract(image_bytes)
+    if not extracted.label_detected:
+        raise NoLabelError()
+    results = verify(extracted, application)
+    elapsed_ms = int((time.perf_counter() - start) * 1000)
+    return {
+        "overall_status": overall_status(results),
+        "processing_time_ms": elapsed_ms,
+        "fields": {result.field: asdict(result) for result in results},
+    }
 
 
 @app.exception_handler(Exception)
@@ -68,32 +104,7 @@ def verify_label(
     extractor: Extractor = Depends(get_extractor),
 ) -> JSONResponse | dict[str, Any]:
     """Verify one label image against the application data."""
-    start = time.perf_counter()
     image_bytes = file.file.read()
-
-    try:
-        prepare_image(image_bytes)  # validate early (and cheaply) -> friendly 400
-    except BadImageError:
-        return _error(
-            400,
-            "bad_file",
-            "That file doesn't look like an image. Please upload a photo of the "
-            "label as a JPG or PNG and try again.",
-        )
-
-    try:
-        extracted = extractor.extract(image_bytes)
-    except ExtractionError as exc:
-        return _error(502, "extraction_failed", f"{exc} Please try again in a moment.")
-
-    if not extracted.label_detected:
-        return _error(
-            422,
-            "no_label",
-            "We couldn't read a label in this image. Try a straight-on, well-lit "
-            "photo where the label text fills most of the frame.",
-        )
-
     application = ApplicationData(
         brand=brand,
         class_type=class_type,
@@ -103,11 +114,123 @@ def verify_label(
         origin_country=origin_country,
         is_import=is_import,
     )
-    results = verify(extracted, application)
-    elapsed_ms = int((time.perf_counter() - start) * 1000)
+
+    try:
+        return run_label_check(image_bytes, application, extractor)
+    except BadImageError:
+        return _error(400, "bad_file", BAD_FILE_MESSAGE)
+    except ExtractionError as exc:
+        return _error(502, "extraction_failed", f"{exc} Please try again in a moment.")
+    except NoLabelError:
+        return _error(422, "no_label", NO_LABEL_MESSAGE)
+
+
+def _batch_error_entry(filename: str, code: str, message: str) -> dict[str, Any]:
+    return {"filename": filename, "error": {"code": code, "message": message}}
+
+
+@app.post("/api/verify-batch", response_model=None)  # returns dict or error JSONResponse
+async def verify_batch(
+    files: list[UploadFile] = File(...),
+    manifest: UploadFile | None = File(None),
+    brand: str | None = Form(None),
+    class_type: str | None = Form(None),
+    abv: str | None = Form(None),
+    net_contents: str | None = Form(None),
+    producer: str | None = Form(None),
+    origin_country: str | None = Form(None),
+    is_import: bool = Form(False),
+    extractor: Extractor = Depends(get_extractor),
+) -> JSONResponse | dict[str, Any]:
+    """Verify many labels in one request (R4). See app/batch.py for the design.
+
+    Two application-data modes: a CSV manifest (one row per file, matched by
+    file name) or, without a manifest, one shared set of form fields applied
+    to every file. Labels are processed concurrently under a semaphore
+    (BATCH_CONCURRENCY, default 4); one bad file yields an error entry for
+    that label and the batch continues.
+    """
+    batch_start = time.perf_counter()
+
+    if len(files) > MAX_BATCH_SIZE:
+        return _error(
+            413,
+            "batch_too_large",
+            f"That's {len(files)} photos — we can check up to {MAX_BATCH_SIZE} in one batch. "
+            "Please split the photos into smaller batches and try again.",
+        )
+
+    applications: dict[str, ApplicationData] | None = None
+    shared: ApplicationData | None = None
+    if manifest is not None:
+        try:
+            applications = parse_manifest(await manifest.read())
+        except ManifestError as exc:
+            return _error(400, "bad_manifest", str(exc))
+    else:
+        if not brand or not brand.strip():
+            return _error(
+                400,
+                "missing_application",
+                "Please either upload a CSV with each label's application details, "
+                "or fill in at least the brand name to use for every photo.",
+            )
+        shared = ApplicationData(
+            brand=brand,
+            class_type=class_type,
+            abv=abv,
+            net_contents=net_contents,
+            producer=producer,
+            origin_country=origin_country,
+            is_import=is_import,
+        )
+
+    payloads: list[tuple[str, bytes]] = []
+    for position, upload in enumerate(files, start=1):
+        payloads.append((upload.filename or f"photo-{position}", await upload.read()))
+
+    semaphore = asyncio.Semaphore(batch_concurrency())
+
+    async def check_one(filename: str, image_bytes: bytes) -> dict[str, Any]:
+        if applications is not None:
+            application = applications.get(normalize_filename(filename))
+            if application is None:
+                return _batch_error_entry(
+                    filename,
+                    "no_application",
+                    f"The CSV doesn't have a row for '{filename}'. "
+                    "Add a row with this file name and try again.",
+                )
+        else:
+            assert shared is not None
+            application = shared
+        async with semaphore:
+            try:
+                # ClaudeExtractor.extract is sync; keep the event loop free.
+                result = await asyncio.to_thread(run_label_check, image_bytes, application, extractor)
+            except BadImageError:
+                return _batch_error_entry(filename, "bad_file", BAD_FILE_MESSAGE)
+            except ExtractionError as exc:
+                return _batch_error_entry(filename, "extraction_failed", f"{exc} Please try again in a moment.")
+            except NoLabelError:
+                return _batch_error_entry(filename, "no_label", NO_LABEL_MESSAGE)
+            except Exception:  # per-label isolation: never let one label sink the batch
+                return _batch_error_entry(
+                    filename, "internal_error", "Something went wrong checking this label. Please try again."
+                )
+        return {"filename": filename, **result}
+
+    results = await asyncio.gather(*(check_one(name, data) for name, data in payloads))
+
+    counts = {"match": 0, "review": 0, "mismatch": 0, "error": 0}
+    for entry in results:
+        counts["error" if "error" in entry else entry["overall_status"]] += 1
 
     return {
-        "overall_status": overall_status(results),
-        "processing_time_ms": elapsed_ms,
-        "fields": {result.field: asdict(result) for result in results},
+        "summary": {
+            "total": len(results),
+            **counts,
+            "total_time_ms": int((time.perf_counter() - batch_start) * 1000),
+        },
+        "results": results,
     }
