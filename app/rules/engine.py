@@ -18,6 +18,13 @@ from app.rules.warning import match_warning
 LOW_CONFIDENCE_THRESHOLD = 0.6
 
 
+def _as_text(value: object) -> str | None:
+    """Defensive boundary: a schema-violating payload may carry non-string values."""
+    if value is None or isinstance(value, str):
+        return value
+    return str(value)
+
+
 def _not_provided(field: str, extracted: str | None) -> FieldResult:
     return FieldResult(
         field=field,
@@ -47,39 +54,46 @@ def _apply_confidence(result: FieldResult, confidence: float | None) -> FieldRes
 def verify(extracted: ExtractedLabel, application: ApplicationData) -> list[FieldResult]:
     """Run every field matcher and return per-field results in a stable order."""
     conf = extracted.confidence
+    brand = _as_text(extracted.brand)
+    class_type = _as_text(extracted.class_type)
+    alcohol_content = _as_text(extracted.alcohol_content)
+    net_contents = _as_text(extracted.net_contents)
+    producer = _as_text(extracted.producer)
+    origin_country = _as_text(extracted.origin_country)
+    government_warning = _as_text(extracted.government_warning)
 
     results = [
-        _apply_confidence(match_brand(extracted.brand, application.brand), conf.get("brand")),
+        _apply_confidence(match_brand(brand, application.brand), conf.get("brand")),
         _apply_confidence(
-            match_class_type(extracted.class_type, application.class_type)
+            match_class_type(class_type, application.class_type)
             if application.class_type
-            else _not_provided("class_type", extracted.class_type),
+            else _not_provided("class_type", class_type),
             conf.get("class_type"),
         ),
         _apply_confidence(
-            match_alcohol(extracted.alcohol_content, application.abv)
+            match_alcohol(alcohol_content, application.abv)
             if application.abv
-            else _not_provided("abv", extracted.alcohol_content),
+            else _not_provided("abv", alcohol_content),
             conf.get("alcohol_content"),
         ),
         _apply_confidence(
-            match_net_contents(extracted.net_contents, application.net_contents)
+            match_net_contents(net_contents, application.net_contents)
             if application.net_contents
-            else _not_provided("net_contents", extracted.net_contents),
+            else _not_provided("net_contents", net_contents),
             conf.get("net_contents"),
         ),
         _apply_confidence(
-            match_producer(extracted.producer, application.producer)
+            match_producer(producer, application.producer)
             if application.producer
-            else _not_provided("producer", extracted.producer),
+            else _not_provided("producer", producer),
             conf.get("producer"),
         ),
         _apply_confidence(
-            match_origin(extracted.origin_country, application.origin_country, application.is_import),
+            match_origin(origin_country, application.origin_country, application.is_import),
             conf.get("origin_country"),
         ),
         _apply_confidence(
-            match_warning(extracted.government_warning, extracted.warning_prefix_appears_bold),
+            match_warning(government_warning, extracted.warning_prefix_appears_bold),
             conf.get("government_warning"),
         ),
     ]

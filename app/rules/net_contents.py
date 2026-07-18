@@ -80,6 +80,16 @@ def match_net_contents(extracted: str | None, expected: str) -> FieldResult:
             reason=f"Could not interpret the label's net contents ({extracted!r}) — needs human review.",
         )
 
+    if expected_ml == 0:
+        return FieldResult(
+            field="net_contents",
+            verdict=Verdict.REVIEW,
+            extracted=extracted,
+            expected=expected,
+            similarity=None,
+            reason="The application lists zero net contents — needs human review.",
+        )
+
     relative_diff = abs(label_ml - expected_ml) / expected_ml
     detail = {
         "label_ml": round(label_ml, 2),

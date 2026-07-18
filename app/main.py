@@ -33,6 +33,12 @@ def _error(status_code: int, code: str, message: str) -> JSONResponse:
     return JSONResponse(status_code=status_code, content={"error": {"code": code, "message": message}})
 
 
+@app.exception_handler(Exception)
+def unexpected_error(request: Any, exc: Exception) -> JSONResponse:
+    """Last-resort net: even an unforeseen bug renders the friendly error shape."""
+    return _error(500, "internal_error", "Something went wrong on our end. Please try again.")
+
+
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}

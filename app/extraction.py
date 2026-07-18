@@ -186,15 +186,18 @@ class ClaudeExtractor:
         if tool_use is None or not isinstance(tool_use.input, dict):
             raise ExtractionError("The label reading service returned an unexpected response.")
         data: dict[str, Any] = tool_use.input
-        return ExtractedLabel(
-            brand=data.get("brand"),
-            class_type=data.get("class_type"),
-            alcohol_content=data.get("alcohol_content"),
-            net_contents=data.get("net_contents"),
-            producer=data.get("producer"),
-            origin_country=data.get("origin_country"),
-            government_warning=data.get("government_warning"),
-            warning_prefix_appears_bold=data.get("warning_prefix_appears_bold"),
-            confidence={k: float(v) for k, v in (data.get("confidence") or {}).items()},
-            label_detected=bool(data.get("label_detected", True)),
-        )
+        try:
+            return ExtractedLabel(
+                brand=data.get("brand"),
+                class_type=data.get("class_type"),
+                alcohol_content=data.get("alcohol_content"),
+                net_contents=data.get("net_contents"),
+                producer=data.get("producer"),
+                origin_country=data.get("origin_country"),
+                government_warning=data.get("government_warning"),
+                warning_prefix_appears_bold=data.get("warning_prefix_appears_bold"),
+                confidence={k: float(v) for k, v in (data.get("confidence") or {}).items()},
+                label_detected=bool(data.get("label_detected", True)),
+            )
+        except (TypeError, ValueError) as exc:
+            raise ExtractionError("The label reading service returned an unexpected response.") from exc
