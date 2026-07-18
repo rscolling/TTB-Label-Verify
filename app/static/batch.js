@@ -105,6 +105,8 @@
       : files.length + " photos selected";
     dropzoneEmpty.hidden = true;
     dropzoneSelected.hidden = false;
+    resultsSection.hidden = true;
+    allResults = [];
     hideError();
   }
 
