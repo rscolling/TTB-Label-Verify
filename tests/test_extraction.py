@@ -18,7 +18,7 @@ from PIL import Image
 
 from app.extraction import (
     MAX_DIMENSION,
-    MODEL,
+    DEFAULT_MODEL,
     BadImageError,
     ClaudeExtractor,
     ExtractionError,
@@ -100,7 +100,7 @@ class TestClaudeExtractorLazyInit:
         assert extractor._client is None  # client is only built on first use
 
     def test_model_defaults_to_spec_pin(self):
-        assert MODEL == "claude-sonnet-5"
+        assert DEFAULT_MODEL == "claude-sonnet-5"
 
 
 class TestClaudeExtractorExtract:
@@ -110,7 +110,7 @@ class TestClaudeExtractorExtract:
 
         assert len(messages.calls) == 1  # R2: exactly one vision call
         call = messages.calls[0]
-        assert call["model"] == MODEL
+        assert call["model"] == DEFAULT_MODEL
         assert call["tool_choice"] == {"type": "tool", "name": "record_label_fields"}
         assert call["tools"][0]["name"] == "record_label_fields"
 
@@ -171,8 +171,25 @@ class TestClaudeExtractorExtract:
         assert len(messages.calls) == 2  # SPEC.md: retry once, then error out
 
     def test_response_without_tool_use_block_is_extraction_error(self):
-        extractor, _ = make_extractor(
-            [SimpleNamespace(content=[SimpleNamespace(type="text", text="hello")])]
-        )
+        bad = SimpleNamespace(content=[SimpleNamespace(type="text", text="hello")])
+        extractor, messages = make_extractor([bad, bad])
         with pytest.raises(ExtractionError, match="unexpected response"):
             extractor.extract(image_bytes(64, 64))
+        assert len(messages.calls) == 2  # malformed payloads get one fresh retry
+
+    def test_malformed_payload_recovers_on_retry(self):
+        bad = SimpleNamespace(content=[SimpleNamespace(type="text", text="hello")])
+        extractor, messages = make_extractor([bad, tool_use_response(MINIMAL_INPUT)])
+        extracted = extractor.extract(image_bytes(64, 64))
+        assert extracted.label_detected is True
+        assert len(messages.calls) == 2
+
+
+class TestModelKnob:
+    def test_extraction_model_env_var_overrides_default(self, monkeypatch):
+        monkeypatch.setenv("EXTRACTION_MODEL", "claude-haiku-4-5-20251001")
+        assert ClaudeExtractor()._model == "claude-haiku-4-5-20251001"
+
+    def test_explicit_model_argument_wins_over_env(self, monkeypatch):
+        monkeypatch.setenv("EXTRACTION_MODEL", "claude-haiku-4-5-20251001")
+        assert ClaudeExtractor(model="claude-sonnet-5")._model == "claude-sonnet-5"

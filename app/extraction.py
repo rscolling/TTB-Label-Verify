@@ -17,7 +17,7 @@ from PIL import Image, UnidentifiedImageError
 
 from app.models import ExtractedLabel
 
-MODEL = "claude-sonnet-5"
+DEFAULT_MODEL = "claude-sonnet-5"
 MAX_DIMENSION = 1568  # Anthropic vision sweet spot; also caps upload size (R2).
 JPEG_QUALITY = 85
 
@@ -130,17 +130,21 @@ _SYSTEM_PROMPT = (
     "You transcribe alcohol beverage label images for a compliance workflow. "
     "Transcribe exactly what is printed — never correct, complete, or normalize "
     "the text; capitalization must be preserved verbatim (especially for the "
-    "government warning). Use null for fields that are not visible, and lower "
-    "the confidence for anything blurry, glared, or at a steep angle."
+    "government warning). Transcribe the government warning with particular "
+    "care, word by word — re-read your transcription against the image before "
+    "answering. Use null for fields that are not visible, and lower the "
+    "confidence for anything blurry, glared, or at a steep angle."
 )
 
 
 class ClaudeExtractor:
     """Single Claude vision call with a forced structured-output tool."""
 
-    def __init__(self, api_key: str | None = None, model: str = MODEL) -> None:
+    def __init__(self, api_key: str | None = None, model: str | None = None) -> None:
         self._api_key = api_key
-        self._model = model
+        # Resolved at construction (after load_dotenv), not import: the
+        # EXTRACTION_MODEL env var is the speed/accuracy knob (see APPROACH.md).
+        self._model = model or os.environ.get("EXTRACTION_MODEL", DEFAULT_MODEL)
         self._client: Any = None  # lazy: constructing must not require a key
 
     def _get_client(self) -> Any:
@@ -184,6 +188,8 @@ class ClaudeExtractor:
                 return self._parse_response(response)
             except (anthropic.APIConnectionError, TimeoutError) as exc:
                 last_error = exc  # transient: retry once
+            except ExtractionError as exc:
+                last_error = exc  # malformed tool payload: a fresh call usually parses
             except anthropic.APIStatusError as exc:
                 if exc.status_code >= 500 or exc.status_code == 429:
                     last_error = exc  # server-side/rate-limit: retry once
