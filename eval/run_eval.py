@@ -182,6 +182,9 @@ def select_entries(entries: list[dict[str, Any]], label: str | None, limit: int 
 
 
 def main(argv: list[str] | None = None, extractor: Any = None) -> int:
+    # Windows consoles default to a legacy codepage that can't print ✓/✗.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description="Run the synthetic-label eval through the real pipeline.")
     parser.add_argument("--limit", type=int, default=None, metavar="N", help="only run the first N labels")
     parser.add_argument("--label", default=None, metavar="NAME", help="only run labels whose name contains NAME")

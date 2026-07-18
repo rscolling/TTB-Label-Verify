@@ -42,3 +42,42 @@ class TestMatchProducer:
 
     def test_missing_producer_is_mismatch(self):
         assert match_producer(None, EXPECTED).verdict is Verdict.MISMATCH
+
+
+class TestBottlerStatementBoilerplate:
+    """Live-eval finding: labels carry bottler statements the application omits."""
+
+    def test_distilled_and_bottled_by_prefix_still_matches(self):
+        result = match_producer(
+            "Distilled and Bottled by Copper Hollow Distilling Co., 412 Millrace Road, Bardstown, Kentucky 40004",
+            "Copper Hollow Distilling Co., 412 Millrace Road, Bardstown, Kentucky 40004",
+        )
+        assert result.verdict is Verdict.MATCH
+
+    def test_all_caps_produced_and_bottled_by(self):
+        result = match_producer(
+            "PRODUCED AND BOTTLED BY Mariner's Cove Winery, 88 Harbor Lane, Astoria, Oregon 97103",
+            "Mariner's Cove Winery, 88 Harbor Lane, Astoria, Oregon 97103",
+        )
+        assert result.verdict is Verdict.MATCH
+
+    def test_imported_by_prefix(self):
+        result = match_producer(
+            "Imported by Thamesgate Spirits Ltd., London, England",
+            "Thamesgate Spirits Ltd., London, England",
+        )
+        assert result.verdict is Verdict.MATCH
+
+    def test_boilerplate_on_both_sides(self):
+        result = match_producer(
+            "Bottled by Copper Hollow Distilling Co., Bardstown, Kentucky",
+            "Distilled and Bottled by Copper Hollow Distilling Co., Bardstown, Kentucky",
+        )
+        assert result.verdict is Verdict.MATCH
+
+    def test_company_actually_named_by_the_barrel_is_not_over_stripped(self):
+        result = match_producer(
+            "By The Barrel Brewing Co., 12 Main St, Dayton, Ohio",
+            "By The Barrel Brewing Co., 12 Main St, Dayton, Ohio",
+        )
+        assert result.verdict is Verdict.MATCH

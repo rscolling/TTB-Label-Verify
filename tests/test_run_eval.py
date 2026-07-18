@@ -183,6 +183,9 @@ class TestMain:
 
     def test_missing_api_key_fails_fast_with_clear_message(self, capsys, monkeypatch):
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        # Neutralize the developer's real .env — this test must hold even on a
+        # machine where a key is configured.
+        monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: False)
         code = run_eval.main(["--limit", "1"])  # no injected extractor -> live path
         assert code == 2
         err = capsys.readouterr().err

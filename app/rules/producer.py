@@ -19,6 +19,19 @@ ADDRESS_OVERLAP_THRESHOLD = 0.5
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 
+# Labels state the producer inside a bottler statement ("DISTILLED AND BOTTLED
+# BY ...", "Imported by ..."); applications usually carry the bare name. Strip
+# the boilerplate before comparing so it never drags down the name similarity.
+_BOILERPLATE_RE = re.compile(
+    r"^\s*(?:(?:distilled|produced|bottled|brewed|vinted|cellared|blended|"
+    r"imported|manufactured|made|crafted)\s*(?:,|and|&)?\s*)+by\s+",
+    re.IGNORECASE,
+)
+
+
+def _strip_bottler_statement(text: str) -> str:
+    return _BOILERPLATE_RE.sub("", text, count=1)
+
 
 def _split_name_address(text: str) -> tuple[str, str]:
     """Split 'Name, street, city' (or newline-separated) into (name, address)."""
@@ -49,8 +62,8 @@ def match_producer(extracted: str | None, expected: str) -> FieldResult:
             reason="No producer name and address found on the label.",
         )
 
-    label_name, label_address = _split_name_address(extracted)
-    expected_name, expected_address = _split_name_address(expected)
+    label_name, label_address = _split_name_address(_strip_bottler_statement(extracted))
+    expected_name, expected_address = _split_name_address(_strip_bottler_statement(expected))
 
     name_score = fuzz.token_sort_ratio(casefold_norm(label_name), casefold_norm(expected_name))
     overlap = None
