@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install Chromium for browser E2E tests
+        run: playwright install chromium --with-deps
+
+      # Offline suite: unit + API + real-browser E2E + adversarial QA.
+      # Live-API tests are key-gated and skip automatically in CI.
+      - name: Run tests
+        run: pytest -q
