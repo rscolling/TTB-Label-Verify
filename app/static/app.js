@@ -164,6 +164,12 @@
       csvStatus.textContent = "Using “" + csvFile.name +
         "” — each photo will be checked against its row.";
     }
+    // Results on screen were scored against the previous spreadsheet — clear
+    // them, same rule as choosing new photos. Mid-scan the worksheet is left
+    // alone: the running scan uses the CSV snapshotted at submit.
+    if (!scanning) {
+      clearWorksheet();
+    }
   }
 
   csvInput.addEventListener("change", syncCsv);
@@ -186,7 +192,10 @@
     errorCallout.hidden = true;
   }
 
+  var scanning = false;
+
   function setBusy(busy) {
+    scanning = busy;
     scanButton.disabled = busy;
     scanButton.textContent = busy ? "Scanning…" : "Scan Labels";
   }
@@ -743,13 +752,13 @@
 
   /* ---------- submit: chunked requests for real progress ---------- */
 
-  function sendChunk(chunk) {
+  function sendChunk(chunk, submittalCsv) {
     var formData = new FormData();
     chunk.forEach(function (file) { formData.append("files", file, file.name); });
-    if (csvFile) {
+    if (submittalCsv) {
       // The server ignores manifest rows for files not in this chunk, so the
       // full spreadsheet can ride along with every sub-batch.
-      formData.append("manifest", csvFile, csvFile.name);
+      formData.append("manifest", submittalCsv, submittalCsv.name);
     } else {
       // No submittal form. The endpoint requires a brand to compare against,
       // so send a placeholder — the server still extracts every field, and
@@ -786,7 +795,10 @@
     }
 
     var files = selectedFiles.slice();
-    var hasSubmittal = csvFile !== null;
+    // Snapshot the submittal CSV now: removing or swapping the spreadsheet
+    // mid-scan must not change what later chunks are checked against.
+    var submittalCsv = csvFile;
+    var hasSubmittal = submittalCsv !== null;
     var total = files.length;
     var chunks = [];
     for (var i = 0; i < total; i += CHUNK_SIZE) {
@@ -820,7 +832,7 @@
     var sequence = Promise.resolve();
     chunks.forEach(function (chunk) {
       sequence = sequence.then(function () {
-        return sendChunk(chunk).catch(function (error) {
+        return sendChunk(chunk, submittalCsv).catch(function (error) {
           // A failed sub-batch becomes error rows; the scan continues.
           var message = error instanceof TypeError
             ? "We couldn't reach the scanning service for these photos."
