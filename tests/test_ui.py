@@ -1,8 +1,10 @@
-"""L2 — UI page and static asset serving (WP2).
+"""L2 — UI page and static asset serving (WP2, reshaped by WP5).
 
-Locks: GET / serves the single-page UI, the page references its assets, the
-assets themselves serve with sensible content types, and adding the UI did
-not disturb the API routes.
+Locks: GET / serves the unified worksheet UI (dropzone + submittal CSV slot +
+scan button + worksheet table), the page references its assets, the assets
+serve with sensible content types, and the UI redesign did not disturb the
+API routes. The old two-tab layout and the "enter application details" form
+are gone by design (WP5) — this file locks their absence.
 """
 
 from __future__ import annotations
@@ -28,17 +30,35 @@ class TestIndexPage:
         html = client.get("/").text
         assert "/static/styles.css" in html
         assert "/static/app.js" in html
+        # The old split batch script is gone — one unified flow, one script.
+        assert "/static/batch.js" not in html
 
     def test_page_has_the_core_controls(self, client):
         html = client.get("/").text
-        assert "Check This Label" in html
-        assert 'type="file"' in html
-        # Every form field the API accepts is present on the page.
-        for field_id in ("brand", "class_type", "abv", "net_contents", "producer", "origin_country", "is_import"):
-            assert f'id="{field_id}"' in html, field_id
+        # Drag-and-drop photo upload (multi-file), the submittal CSV slot,
+        # one scan button, and the worksheet table.
+        assert 'id="file-input"' in html
+        assert "multiple" in html
+        assert 'id="csv-input"' in html
+        assert 'id="scan-button"' in html
+        assert "Scan Labels" in html
+        assert 'id="worksheet"' in html
+        assert 'id="worksheet-body"' in html
+
+    def test_application_details_form_is_gone(self, client):
+        # WP5: application data arrives ONLY via the submittal CSV — there is
+        # no typed application-details form and no mode tabs anymore.
+        html = client.get("/").text
+        for removed_id in ("brand", "class_type", "abv", "tab-single", "tab-batch", "batch_brand"):
+            assert f'id="{removed_id}"' not in html, removed_id
+
+    def test_worksheet_has_the_owner_required_columns(self, client):
+        html = client.get("/").text
+        for column in ("Serial", "Scanned at", "Photo", "Brand name", "Health warning", "Score", "Result"):
+            assert column in html, column
 
     def test_page_is_plain_language_no_jargon(self, client):
-        # R5: visible text avoids jargon; "ABV" appears only as an input hint example.
+        # R5: visible text avoids jargon.
         html = client.get("/").text
         assert "Alcohol content" in html
 
@@ -57,6 +77,9 @@ class TestStaticAssets:
         response = client.get("/static/app.js")
         assert response.status_code == 200
         assert "javascript" in response.headers["content-type"]
+
+    def test_removed_batch_script_is_404(self, client):
+        assert client.get("/static/batch.js").status_code == 404
 
     def test_unknown_asset_is_404(self, client):
         assert client.get("/static/nope.js").status_code == 404

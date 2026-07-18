@@ -1,7 +1,13 @@
-"""L4 (mocked) — browser-driven E2E of the batch ("Check many labels") UI.
+"""L4 (mocked) — browser-driven E2E of the worksheet flow with many photos
+and the submittal-form CSV (WP5).
 
 Same harness as test_e2e_ui.py: real FastAPI app on a loopback port with a
 switchable fake extractor — no API key, no network beyond localhost.
+Covers: happy multi-photo scan against a submittal CSV, per-row pass/fail
+scoring, chunked progress, the photo-missing-from-CSV error row, the no-CSV
+multi-photo path, and the CSV export (downloaded through the real browser
+and re-parsed with Python's csv module).
+
 Marked ``e2e``; skips cleanly when Playwright/Chromium is unavailable.
 """
 
@@ -9,9 +15,11 @@ from __future__ import annotations
 
 import csv
 import io
+import re
 import socket
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -21,6 +29,7 @@ playwright_api = pytest.importorskip(
 )
 
 import uvicorn
+from PIL import Image
 
 from app.main import app, get_extractor
 from app.models import ExtractedLabel
@@ -31,6 +40,18 @@ pytestmark = pytest.mark.e2e
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 LABELS_DIR = REPO_ROOT / "eval" / "labels"
+
+STAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$")
+
+CSV_FIELDS = [
+    "brand",
+    "class_type",
+    "abv",
+    "net_contents",
+    "producer",
+    "origin_country",
+    "government_warning",
+]
 
 GOOD_EXTRACTION = ExtractedLabel(
     brand="STONE'S THROW",
@@ -45,15 +66,31 @@ GOOD_EXTRACTION = ExtractedLabel(
     label_detected=True,
 )
 
-CSV_FIELDS = [
-    "brand",
-    "class_type",
-    "abv",
-    "net_contents",
-    "producer",
-    "origin_country",
-    "government_warning",
-]
+# One shared submittal row body that fully matches GOOD_EXTRACTION:
+# 6 applicable fields (origin is N/A for domestic) -> "6/6 fields match".
+MATCHING_ROW = '"Stone\'s Throw","Kentucky Straight Bourbon Whiskey",45%,750 mL,"Blue Ridge Distilling Co., 12 Main Street, Asheville, NC 28801",,false'
+
+
+def tiny_png() -> bytes:
+    buffer = io.BytesIO()
+    Image.new("RGB", (2, 2), "white").save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+PNG = tiny_png()
+
+
+def memory_files(names: list[str]) -> list[dict]:
+    return [{"name": name, "mimeType": "image/png", "buffer": PNG} for name in names]
+
+
+def csv_payload(text: str, name: str = "submittal.csv") -> list[dict]:
+    return [{"name": name, "mimeType": "text/csv", "buffer": text.encode("utf-8")}]
+
+
+def matching_manifest(filenames: list[str]) -> str:
+    header = "filename,brand,class_type,abv,net_contents,producer,origin_country,is_import\n"
+    return header + "".join(f"{name},{MATCHING_ROW}\n" for name in filenames)
 
 
 class SlowFakeExtractor(FakeExtractor):
@@ -131,153 +168,253 @@ def label_paths(count: int) -> list[str]:
     return [str(p) for p in paths]
 
 
-def open_batch_tab(page, base_url: str) -> None:
-    page.goto(base_url + "/")
-    page.click("#tab-batch")
-    playwright_api.expect(page.locator("#batch-panel")).to_be_visible()
-    playwright_api.expect(page.locator("#single-panel")).to_be_hidden()
+def worksheet_rows(page):
+    return page.locator("#worksheet-body > tr.worksheet-row")
 
 
-def result_rows(page):
-    return page.locator("#batch-results-body > tr:not(.detail-row)")
+def wait_for_banner(page, timeout: int = 15_000):
+    playwright_api.expect(page.locator("#banner-text")).to_contain_text(
+        "scanned", timeout=timeout
+    )
 
 
-class TestBatchHappyPath:
-    def test_five_labels_progress_table_and_csv_download(self, page, base_url, extractor, tmp_path):
-        extractor.delegate = SlowFakeExtractor(GOOD_EXTRACTION, delay=0.15)
-        open_batch_tab(page, base_url)
-        page.set_input_files("#batch-file-input", label_paths(5))
-        playwright_api.expect(page.locator("#batch-file-summary")).to_contain_text("5 photos selected")
-        page.fill("#batch_brand", "Stone's Throw")
-        page.fill("#batch_abv", "45%")
-        page.click("#batch-check-button")
+def download_worksheet_csv(page, tmp_path) -> bytes:
+    with page.expect_download() as download_info:
+        page.click("#download-csv")
+    path = tmp_path / "worksheet.csv"
+    download_info.value.save_as(path)
+    return path.read_bytes()
 
-        # Progress is visible and counts against the real total while checking.
-        playwright_api.expect(page.locator("#batch-progress")).to_be_visible()
-        playwright_api.expect(page.locator("#batch-progress-text")).to_have_text(
-            "Checked 0 of 5…"
+
+class TestHappyScanWithCsv:
+    def test_five_photos_all_pass_with_serials_and_scores(self, page, base_url, tmp_path):
+        paths = label_paths(5)
+        page.goto(base_url + "/")
+        page.set_input_files("#file-input", paths)
+        playwright_api.expect(page.locator("#file-summary")).to_contain_text("5 photos selected")
+        page.set_input_files(
+            "#csv-input", files=csv_payload(matching_manifest([Path(p).name for p in paths]))
+        )
+        playwright_api.expect(page.locator("#csv-status")).to_contain_text("submittal.csv")
+        page.click("#scan-button")
+
+        playwright_api.expect(page.locator("#banner-text")).to_have_text(
+            "5 labels scanned — 5 passed", timeout=15_000
+        )
+        playwright_api.expect(worksheet_rows(page)).to_have_count(5)
+
+        # Serials 001..005 in scan order.
+        serials = [
+            (worksheet_rows(page).nth(i).locator("td").first.text_content() or "").strip()
+            for i in range(5)
+        ]
+        assert serials == ["001", "002", "003", "004", "005"], serials
+
+        first = worksheet_rows(page).first
+        playwright_api.expect(first).to_contain_text("01-bourbon-clean.png")
+        # Every applicable field matched -> per-cell ✓ marks, 6/6 score, PASS.
+        playwright_api.expect(
+            first.locator('td[data-label="Brand name"] .mark')
+        ).to_have_attribute("title", "Matches")
+        playwright_api.expect(first.locator('td[data-label="Score"]')).to_have_text(
+            "6/6 fields match"
+        )
+        playwright_api.expect(first.locator(".status-badge")).to_have_text("PASS")
+        assert "row-fail" not in (first.get_attribute("class") or "")
+        assert first.locator(".flag").count() == 0, "a passing row must not be flagged"
+        # Thumbnail from a client-side object URL.
+        thumb_src = first.locator(".thumb").get_attribute("src")
+        assert thumb_src and thumb_src.startswith("blob:")
+        # Timestamp column present and well-formed on every row.
+        for i in range(5):
+            stamp = (
+                worksheet_rows(page).nth(i).locator('td[data-label="Scanned at"]').text_content()
+                or ""
+            ).strip()
+            assert STAMP_RE.match(stamp), f"row {i} stamp {stamp!r}"
+
+    def test_mismatched_row_is_failed_and_flagged(self, page, base_url):
+        paths = label_paths(2)
+        names = [Path(p).name for p in paths]
+        manifest = (
+            "filename,brand,class_type,abv,net_contents,producer,origin_country,is_import\n"
+            f"{names[0]},{MATCHING_ROW}\n"
+            f"{names[1]},Completely Different Brand,,,,,,false\n"
+        )
+        page.goto(base_url + "/")
+        page.set_input_files("#file-input", paths)
+        page.set_input_files("#csv-input", files=csv_payload(manifest))
+        page.click("#scan-button")
+
+        playwright_api.expect(page.locator("#banner-text")).to_have_text(
+            "2 labels scanned — 1 passed, 1 failed", timeout=15_000
+        )
+        bad = worksheet_rows(page).nth(1)
+        playwright_api.expect(bad.locator(".status-badge")).to_have_text("FAIL")
+        assert "row-fail" in (bad.get_attribute("class") or "")
+        playwright_api.expect(bad.locator(".flag")).to_have_count(1)
+        playwright_api.expect(
+            bad.locator('td[data-label="Brand name"] .mark')
+        ).to_have_attribute("title", "Doesn't match")
+        # Score counts the applicable matches (brand missed; warning matched).
+        playwright_api.expect(bad.locator('td[data-label="Score"]')).to_contain_text(
+            "fields match"
         )
 
-        # Final state: banner summary + one row per label, all matching.
-        playwright_api.expect(page.locator("#batch-banner-text")).to_have_text(
-            "5 labels checked — 5 match", timeout=15_000
+    def test_photo_missing_from_csv_becomes_error_row(self, page, base_url):
+        paths = label_paths(2)
+        names = [Path(p).name for p in paths]
+        manifest = (
+            "filename,brand,class_type,abv,net_contents,producer,origin_country,is_import\n"
+            f"{names[0]},{MATCHING_ROW}\n"
         )
-        playwright_api.expect(result_rows(page)).to_have_count(5)
-        playwright_api.expect(page.locator("#batch-results-body")).to_contain_text("✅ Matches")
-        playwright_api.expect(page.locator("#batch-results-body")).to_contain_text(
-            "01-bourbon-clean.png"
+        page.goto(base_url + "/")
+        page.set_input_files("#file-input", paths)
+        page.set_input_files("#csv-input", files=csv_payload(manifest))
+        page.click("#scan-button")
+
+        playwright_api.expect(page.locator("#banner-text")).to_have_text(
+            "2 labels scanned — 1 passed, 1 couldn't be scanned", timeout=15_000
         )
-        playwright_api.expect(page.locator("#batch-progress")).to_be_hidden()
+        error_row = worksheet_rows(page).nth(1)
+        playwright_api.expect(error_row.locator(".status-badge")).to_have_text("ERROR")
+        playwright_api.expect(error_row).to_contain_text("doesn't have a row for")
+        playwright_api.expect(error_row.locator(".flag")).to_have_count(1)
 
-        # Expandable per-field detail.
-        page.locator(".detail-toggle").first.click()
-        detail = page.locator(".detail-table").first
-        playwright_api.expect(detail).to_be_visible()
-        playwright_api.expect(detail).to_contain_text("Government health warning")
 
-        # CSV downloads and parses with the expected columns.
-        with page.expect_download() as download_info:
-            page.click("#batch-download")
-        path = tmp_path / "results.csv"
-        download_info.value.save_as(path)
-        text = path.read_bytes().decode("utf-8-sig")
-        rows = list(csv.reader(io.StringIO(text)))
-        header = rows[0]
-        assert header[:2] == ["filename", "overall_status"]
-        for field in CSV_FIELDS:
-            assert f"{field}_verdict" in header
-            assert f"{field}_reason" in header
-        assert header[-1] == "error"
-        assert len(rows) == 6  # header + 5 labels
-        assert rows[1][0] == "01-bourbon-clean.png"
-        assert rows[1][1] == "match"
-        verdict_at = header.index("brand_verdict")
-        assert rows[1][verdict_at] == "match"
+class TestScanWithoutCsv:
+    def test_multi_photo_scan_without_csv_flags_every_row(self, page, base_url):
+        page.goto(base_url + "/")
+        page.set_input_files("#file-input", label_paths(3))
+        page.click("#scan-button")
+
+        playwright_api.expect(page.locator("#banner-text")).to_have_text(
+            "3 labels scanned — 0 passed, 3 need review", timeout=15_000
+        )
+        for i in range(3):
+            row = worksheet_rows(page).nth(i)
+            playwright_api.expect(row.locator(".status-badge")).to_have_text("REVIEW")
+            playwright_api.expect(row.locator('td[data-label="Score"]')).to_have_text(
+                "No submittal data — needs review"
+            )
+            playwright_api.expect(row.locator(".flag")).to_have_count(1)
+            # Extracted data still fills the columns.
+            playwright_api.expect(row.locator('td[data-label="Brand name"]')).to_contain_text(
+                "STONE'S THROW"
+            )
 
 
 class TestChunkedProgress:
-    def test_twelve_labels_progress_advances_between_chunks(self, page, base_url, extractor):
+    def test_twelve_photos_progress_advances_between_chunks(self, page, base_url, extractor):
         """12 files = 2 sub-batches of 10 and 2: the counter must show the
-        intermediate 'Checked 10 of 12…' state before finishing."""
+        intermediate 'Scanned 10 of 12…' state before finishing, and rows
+        must appear as chunks land."""
         extractor.delegate = SlowFakeExtractor(GOOD_EXTRACTION, delay=0.25)
-        open_batch_tab(page, base_url)
-        page.set_input_files("#batch-file-input", label_paths(12))
-        page.fill("#batch_brand", "Stone's Throw")
+        paths = label_paths(12)
+        page.goto(base_url + "/")
+        page.set_input_files("#file-input", paths)
+        page.set_input_files(
+            "#csv-input", files=csv_payload(matching_manifest([Path(p).name for p in paths]))
+        )
         # Polling-based expect() can miss the short-lived intermediate state;
         # record every progress-text mutation instead.
         page.evaluate(
             """() => {
                 window.__progressStates = [];
-                const node = document.querySelector('#batch-progress-text');
+                const node = document.querySelector('#progress-text');
                 new MutationObserver(() => window.__progressStates.push(node.textContent))
                     .observe(node, {childList: true, characterData: true, subtree: true});
             }"""
         )
-        page.click("#batch-check-button")
+        page.click("#scan-button")
 
-        playwright_api.expect(page.locator("#batch-banner-text")).to_have_text(
-            "12 labels checked — 12 match", timeout=15_000
+        playwright_api.expect(page.locator("#banner-text")).to_have_text(
+            "12 labels scanned — 12 passed", timeout=20_000
         )
-        playwright_api.expect(result_rows(page)).to_have_count(12)
+        playwright_api.expect(worksheet_rows(page)).to_have_count(12)
         states = page.evaluate("() => window.__progressStates")
-        assert "Checked 10 of 12…" in states, f"intermediate chunk state never shown: {states}"
+        assert "Scanned 10 of 12…" in states, f"intermediate chunk state never shown: {states}"
+        playwright_api.expect(page.locator("#progress-block")).to_be_hidden()
+        # Serials remained sequential across the chunk boundary.
+        serial_11 = (worksheet_rows(page).nth(10).locator("td").first.text_content() or "").strip()
+        assert serial_11 == "011", serial_11
 
 
-class TestBatchErrorHandling:
-    def test_corrupt_file_gets_error_row_others_succeed(self, page, base_url, tmp_path):
-        not_an_image = tmp_path / "notes.txt"
-        not_an_image.write_text("this is not an image")
-        open_batch_tab(page, base_url)
-        page.set_input_files("#batch-file-input", [*label_paths(2), str(not_an_image)])
-        page.fill("#batch_brand", "Stone's Throw")
-        page.click("#batch-check-button")
+class TestCsvExport:
+    EXPECTED_COLUMNS = 5 + 7 * 2 + 1  # serial,filename,scan_timestamp,pass_fail,score, 7×(verdict,reason), error
 
-        playwright_api.expect(page.locator("#batch-banner-text")).to_have_text(
-            "3 labels checked — 2 match, 1 couldn't be checked", timeout=15_000
-        )
-        playwright_api.expect(result_rows(page)).to_have_count(3)
-        playwright_api.expect(page.locator("#batch-results-body")).to_contain_text(
-            "⚠️ Couldn't check"
-        )
-        playwright_api.expect(page.locator("#batch-results-body")).to_contain_text(
-            "doesn't look like an image"
-        )
-
-    def test_no_photos_prompts_instead_of_submitting(self, page, base_url):
-        open_batch_tab(page, base_url)
-        page.fill("#batch_brand", "Stone's Throw")
-        page.click("#batch-check-button")
-        callout = page.locator("#batch-error")
-        playwright_api.expect(callout).to_be_visible()
-        playwright_api.expect(callout).to_contain_text("add the label photos")
-
-    def test_no_brand_and_no_csv_prompts(self, page, base_url):
-        open_batch_tab(page, base_url)
-        page.set_input_files("#batch-file-input", label_paths(1))
-        page.click("#batch-check-button")
-        callout = page.locator("#batch-error")
-        playwright_api.expect(callout).to_be_visible()
-        playwright_api.expect(callout).to_contain_text("brand name")
-
-
-class TestManifestModeUI:
-    def test_csv_manifest_drives_per_file_applications(self, page, base_url, tmp_path):
-        manifest = tmp_path / "manifest.csv"
-        manifest.write_text(
+    def test_export_reparses_with_serial_passfail_score_and_timestamp(
+        self, page, base_url, tmp_path
+    ):
+        paths = label_paths(2)
+        names = [Path(p).name for p in paths]
+        manifest = (
             "filename,brand,class_type,abv,net_contents,producer,origin_country,is_import\n"
-            '01-bourbon-clean.png,"Stone\'s Throw",,45%,,,,false\n'
-            "02-wine-clean.png,Completely Different Brand,,,,,,false\n",
-            encoding="utf-8",
+            f"{names[0]},{MATCHING_ROW}\n"
+            f"{names[1]},Completely Different Brand,,,,,,false\n"
         )
-        open_batch_tab(page, base_url)
-        page.set_input_files("#batch-file-input", label_paths(2))
-        page.set_input_files("#manifest-input", str(manifest))
-        # Shared fields grey out when a manifest is chosen.
-        playwright_api.expect(page.locator("#batch_brand")).to_be_disabled()
-        page.click("#batch-check-button")
+        page.goto(base_url + "/")
+        page.set_input_files("#file-input", paths)
+        page.set_input_files("#csv-input", files=csv_payload(manifest))
+        page.click("#scan-button")
+        wait_for_banner(page)
 
-        playwright_api.expect(page.locator("#batch-banner-text")).to_have_text(
-            "2 labels checked — 1 match, 1 don't match", timeout=15_000
-        )
-        playwright_api.expect(page.locator("#batch-results-body")).to_contain_text("❌ Doesn't match")
-        playwright_api.expect(page.locator("#batch-results-body")).to_contain_text("Brand name")
+        raw = download_worksheet_csv(page, tmp_path)
+        assert raw.startswith(b"\xef\xbb\xbf"), "CSV must start with a UTF-8 BOM"
+        text = raw.decode("utf-8-sig")
+        assert "\r\n" in text, "CSV must use CRLF line endings"
+
+        rows = list(csv.reader(io.StringIO(text)))
+        header = rows[0]
+        assert header[:5] == ["serial", "filename", "scan_timestamp", "pass_fail", "score"]
+        for field in CSV_FIELDS:
+            assert f"{field}_verdict" in header, field
+            assert f"{field}_reason" in header, field
+        assert header[-1] == "error"
+        assert all(len(row) == self.EXPECTED_COLUMNS for row in rows), [len(r) for r in rows]
+        assert len(rows) == 3  # header + 2 labels
+
+        assert rows[1][0] == "001" and rows[2][0] == "002"
+        assert rows[1][1] == names[0]
+        # scan_timestamp is ISO 8601 and parses.
+        for row in rows[1:]:
+            parsed = datetime.fromisoformat(row[2])
+            assert parsed.year >= 2026
+        assert rows[1][3] == "PASS" and rows[1][4] == "6/6"
+        assert rows[2][3] == "FAIL"
+        verdict_at = header.index("brand_verdict")
+        assert rows[1][verdict_at] == "match"
+        assert rows[2][verdict_at] == "mismatch"
+
+    def test_export_without_csv_marks_fields_no_submittal_data(
+        self, page, base_url, tmp_path
+    ):
+        page.goto(base_url + "/")
+        page.set_input_files("#file-input", label_paths(1))
+        page.click("#scan-button")
+        wait_for_banner(page)
+
+        rows = list(csv.reader(io.StringIO(
+            download_worksheet_csv(page, tmp_path).decode("utf-8-sig")
+        )))
+        header = rows[0]
+        assert rows[1][header.index("pass_fail")] == "REVIEW"
+        assert rows[1][header.index("brand_verdict")] == "no_submittal_data"
+        # The statutory warning verdict is real even without submittal data.
+        assert rows[1][header.index("government_warning_verdict")] == "match"
+
+    def test_formula_injection_filenames_stay_guarded(self, page, base_url, tmp_path):
+        hostile_names = ["=HYPERLINK(A1).png", "+cmd-launch.png", "-2+3.png", "@SUM(A1).png"]
+        page.goto(base_url + "/")
+        page.set_input_files("#file-input", files=memory_files(hostile_names))
+        page.click("#scan-button")
+        wait_for_banner(page)
+
+        raw = download_worksheet_csv(page, tmp_path)
+        rows = list(csv.reader(io.StringIO(raw.decode("utf-8-sig"))))
+        filenames = [row[1] for row in rows[1:]]
+        for name in hostile_names:
+            assert ("'" + name) in filenames, f"{name!r} not formula-guarded: {filenames}"
+        for row in rows[1:]:
+            for cell in row:
+                assert not cell.startswith(("=", "+", "@")), f"unguarded cell {cell!r}"
