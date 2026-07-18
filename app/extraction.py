@@ -70,7 +70,13 @@ _EXTRACTION_TOOL: dict[str, Any] = {
                 "type": "boolean",
                 "description": "False if the image does not contain a readable alcohol beverage label.",
             },
-            "brand": {**_FIELD_SCHEMA, "description": "Brand name exactly as printed."},
+            "brand": {
+                **_FIELD_SCHEMA,
+                "description": (
+                    "The primary brand name only, exactly as printed — exclude taglines, "
+                    "series names, or decorative text above or below it."
+                ),
+            },
             "class_type": {
                 **_FIELD_SCHEMA,
                 "description": "Class/type designation (e.g. 'Kentucky Straight Bourbon Whiskey').",
@@ -176,8 +182,14 @@ class ClaudeExtractor:
                     ],
                 )
                 return self._parse_response(response)
-            except (anthropic.APIError, anthropic.APIConnectionError, TimeoutError) as exc:
-                last_error = exc
+            except (anthropic.APIConnectionError, TimeoutError) as exc:
+                last_error = exc  # transient: retry once
+            except anthropic.APIStatusError as exc:
+                if exc.status_code >= 500 or exc.status_code == 429:
+                    last_error = exc  # server-side/rate-limit: retry once
+                else:
+                    # 4xx is permanent — retrying a bad request only doubles the failure.
+                    raise ExtractionError("The label reading service rejected the request.") from exc
         raise ExtractionError("The label reading service is unavailable right now.") from last_error
 
     @staticmethod

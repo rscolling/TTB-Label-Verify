@@ -68,3 +68,16 @@ class TestClassType:
     def test_missing_class_is_mismatch(self):
         result = match_class_type("", "Kentucky Straight Bourbon Whiskey")
         assert result.verdict is Verdict.MISMATCH
+
+
+class TestBrandContainmentFallback:
+    """Live-eval finding: vision model folded a label tagline into the brand."""
+
+    def test_brand_with_tagline_folded_in_is_review_not_mismatch(self):
+        result = match_brand("Dry Creek Bench Redlands Ranch", "Redlands Ranch")
+        assert result.verdict is Verdict.REVIEW
+        assert "extra wording" in result.reason
+
+    def test_genuinely_different_brand_stays_mismatch(self):
+        result = match_brand("Copper Hollow", "Redlands Ranch")
+        assert result.verdict is Verdict.MISMATCH

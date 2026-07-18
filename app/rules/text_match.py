@@ -53,8 +53,23 @@ def _fuzzy_match(field: str, label: str, extracted: str | None, expected: str) -
 
 
 def match_brand(extracted: str | None, expected: str) -> FieldResult:
-    """F1: brand name."""
-    return _fuzzy_match("brand", "brand name", extracted, expected)
+    """F1: brand name.
+
+    Labels often surround the brand with taglines or series text the vision
+    model may fold in ("DRY CREEK BENCH Redlands Ranch"). When the words of the
+    application's brand are fully present but extra words drag the ordered
+    similarity down, that is a review case — never a hard mismatch.
+    """
+    result = _fuzzy_match("brand", "brand name", extracted, expected)
+    if result.verdict is Verdict.MISMATCH and extracted and extracted.strip():
+        containment = fuzz.token_set_ratio(casefold_norm(extracted), casefold_norm(expected))
+        if containment >= MATCH_THRESHOLD:
+            result.verdict = Verdict.REVIEW
+            result.reason = (
+                "The application's brand name appears on the label alongside extra "
+                "wording — needs human review to confirm which text is the brand."
+            )
+    return result
 
 
 def match_class_type(extracted: str | None, expected: str) -> FieldResult:

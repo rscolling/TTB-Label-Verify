@@ -81,3 +81,10 @@ class TestBottlerStatementBoilerplate:
             "By The Barrel Brewing Co., 12 Main St, Dayton, Ohio",
         )
         assert result.verdict is Verdict.MATCH
+
+    def test_brewed_and_canned_by_prefix(self):
+        result = match_producer(
+            "BREWED AND CANNED BY GRANITE LEDGE BREWING CO., 27 SWITCHBACK TRAIL, MISSOULA, MONTANA 59802",
+            "Granite Ledge Brewing Co., 27 Switchback Trail, Missoula, Montana 59802",
+        )
+        assert result.verdict is Verdict.MATCH

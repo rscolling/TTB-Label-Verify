@@ -23,8 +23,8 @@ _TOKEN_RE = re.compile(r"[a-z0-9]+")
 # BY ...", "Imported by ..."); applications usually carry the bare name. Strip
 # the boilerplate before comparing so it never drags down the name similarity.
 _BOILERPLATE_RE = re.compile(
-    r"^\s*(?:(?:distilled|produced|bottled|brewed|vinted|cellared|blended|"
-    r"imported|manufactured|made|crafted)\s*(?:,|and|&)?\s*)+by\s+",
+    r"^\s*(?:(?:distilled|produced|bottled|canned|packed|packaged|brewed|vinted|"
+    r"cellared|blended|imported|manufactured|made|crafted)\s*(?:,|and|&)?\s*)+by\s+",
     re.IGNORECASE,
 )
 
