@@ -47,6 +47,12 @@
             A CSV file with these columns: filename, brand, class_type, abv, net_contents,
             producer, origin_country, is_import. We match each row to a photo by its file name.
           </p>
+          <p class="template-row">
+            <button type="button" id="template-download" class="button button-secondary">Download a blank submittal form (CSV)</button>
+          </p>
+          <p class="field-hint">
+            Fill one row per label photo &mdash; the filename must match the photo&rsquo;s name.
+          </p>
           <input type="file" id="csv-input" accept=".csv,text/csv" aria-describedby="csv-hint">
           <p id="csv-status" class="field-hint" hidden></p>
           <button type="button" id="csv-clear" class="button button-secondary" hidden>Remove the spreadsheet</button>
@@ -96,6 +102,7 @@
             <tr>
               <th scope="col">Serial</th>
               <th scope="col">Scanned at</th>
+              <th scope="col">Time</th>
               <th scope="col">Photo</th>
               <th scope="col">Brand name</th>
               <th scope="col">Kind of drink</th>

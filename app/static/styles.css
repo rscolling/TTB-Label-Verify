@@ -156,6 +156,9 @@ main { padding-top: 2rem; }
 
 #csv-status { font-weight: 600; color: var(--accent-dark); }
 
+/* The blank-submittal-form download sits with the CSV slot, quietly. */
+.template-row { margin: 0.35rem 0; }
+
 #csv-clear { margin: 0.25rem 0 0.75rem; }
 
 /* ---------- buttons ---------- */
@@ -361,6 +364,13 @@ main { padding-top: 2rem; }
 .flag { color: var(--bad-ink); }
 
 .time-cell {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-soft);
+}
+
+/* Per-label elapsed time (R2): narrow, numeric, calm. */
+.elapsed-cell {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
   color: var(--ink-soft);

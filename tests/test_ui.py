@@ -54,8 +54,17 @@ class TestIndexPage:
 
     def test_worksheet_has_the_owner_required_columns(self, client):
         html = client.get("/").text
-        for column in ("Serial", "Scanned at", "Photo", "Brand name", "Health warning", "Score", "Result"):
+        for column in ("Serial", "Scanned at", "Time", "Photo", "Brand name", "Health warning", "Score", "Result"):
             assert column in html, column
+
+    def test_blank_submittal_template_control_is_present(self, client):
+        # Audit drift fix: with the typed form gone, non-technical users need
+        # a starting point for the 8-column submittal CSV — a downloadable
+        # blank template next to the upload slot, plus a plain-language hint.
+        html = client.get("/").text
+        assert 'id="template-download"' in html
+        assert "Download a blank submittal form (CSV)" in html
+        assert "must match the photo" in html
 
     def test_page_is_plain_language_no_jargon(self, client):
         # R5: visible text avoids jargon.

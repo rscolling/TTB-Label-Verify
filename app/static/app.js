@@ -22,7 +22,7 @@
 (function () {
   var CHUNK_SIZE = 10;   // labels per request: real progress ticks, bounded requests
   var MAX_FILES = 300;   // mirrors the server's batch cap
-  var COLUMN_COUNT = 12; // serial, time, photo, 7 fields, score, result (with Review button)
+  var COLUMN_COUNT = 13; // serial, scanned-at, elapsed time, photo, 7 fields, score, result (with Review button)
 
   var FIELD_ORDER = [
     "brand", "class_type", "abv", "net_contents",
@@ -89,6 +89,7 @@
   var timing = document.getElementById("timing");
   var worksheetBody = document.getElementById("worksheet-body");
   var downloadButton = document.getElementById("download-csv");
+  var templateButton = document.getElementById("template-download");
 
   var selectedFiles = [];
   var csvFile = null;
@@ -215,6 +216,20 @@
   function isoStamp(date) {      // "2026-07-18T19:42:07" — ISO 8601 local
     var p = stampParts(date);
     return p.date + "T" + p.time;
+  }
+
+  /* Per-label elapsed time (R2: the elapsed time is displayed on every
+     result). Sourced from the server's per-label processing_time_ms — the
+     API shapes already carry it; error entries have none. */
+
+  function elapsedSecondsValue(entry) {  // "4.9" (one decimal) or null
+    if (!entry || typeof entry.processing_time_ms !== "number") { return null; }
+    return (entry.processing_time_ms / 1000).toFixed(1);
+  }
+
+  function elapsedSecondsText(entry) {   // "4.9s" or null
+    var value = elapsedSecondsValue(entry);
+    return value === null ? null : value + "s";
   }
 
   /* ---------- row scoring (client-derived; API shapes untouched) ---------- */
@@ -344,6 +359,12 @@
     timeTd.setAttribute("data-label", "Scanned at");
     timeTd.textContent = displayStamp(row.scannedAt);
     tr.appendChild(timeTd);
+
+    var elapsedTd = document.createElement("td");
+    elapsedTd.className = "elapsed-cell";
+    elapsedTd.setAttribute("data-label", "Time");
+    elapsedTd.textContent = elapsedSecondsText(row.entry) || "—";
+    tr.appendChild(elapsedTd);
 
     var photoTd = document.createElement("td");
     photoTd.className = "photo-cell";
@@ -535,7 +556,9 @@
     header.appendChild(title);
     var stamp = document.createElement("p");
     stamp.className = "detail-stamp";
-    stamp.textContent = "Scanned " + displayStamp(row.scannedAt);
+    var elapsed = elapsedSecondsText(row.entry);
+    stamp.textContent = "Scanned " + displayStamp(row.scannedAt) +
+      (elapsed ? " · " + elapsed : "");
     header.appendChild(stamp);
     var close = document.createElement("button");
     close.type = "button";
@@ -646,7 +669,7 @@
   }
 
   function buildCsv(exportRows) {
-    var header = ["serial", "filename", "scan_timestamp", "pass_fail", "score"];
+    var header = ["serial", "filename", "scan_timestamp", "processing_seconds", "pass_fail", "score"];
     FIELD_ORDER.forEach(function (key) {
       header.push(key + "_verdict");
       header.push(key + "_reason");
@@ -659,6 +682,7 @@
         row.serial,
         row.filename,
         isoStamp(row.scannedAt),
+        elapsedSecondsValue(row.entry) || "",
         STATUSES[row.status].badge,
         csvScore(row)
       ];
@@ -679,15 +703,42 @@
     return "﻿" + lines.join("\r\n") + "\r\n";
   }
 
-  downloadButton.addEventListener("click", function () {
-    var blob = new Blob([buildCsv(rows)], { type: "text/csv;charset=utf-8" });
+  function downloadCsvText(text, filename) {
+    var blob = new Blob([text], { type: "text/csv;charset=utf-8" });
     var link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = "label-scan-worksheet.csv";
+    link.download = filename;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(link.href);
+  }
+
+  downloadButton.addEventListener("click", function () {
+    downloadCsvText(buildCsv(rows), "label-scan-worksheet.csv");
+  });
+
+  /* ---------- blank submittal-form template (client-side, no endpoint) ----------
+     With the typed form gone, checking even one label needs the 8-column
+     submittal CSV. This hands the user a correct starting point: the exact
+     batch-manifest header plus one obviously-fictional example row. Same CSV
+     hygiene as the export: UTF-8 BOM, all cells quoted, CRLF. */
+
+  var TEMPLATE_HEADER = [
+    "filename", "brand", "class_type", "abv", "net_contents",
+    "producer", "origin_country", "is_import"
+  ];
+  var TEMPLATE_EXAMPLE = [
+    "my-label-photo.png", "Example Brand", "Kentucky Straight Bourbon Whiskey",
+    "45%", "750 mL", "Example Distilling Co., 123 Main St, Anytown KY", "", "false"
+  ];
+
+  templateButton.addEventListener("click", function () {
+    var lines = [
+      TEMPLATE_HEADER.map(csvCell).join(","),
+      TEMPLATE_EXAMPLE.map(csvCell).join(",")
+    ];
+    downloadCsvText("﻿" + lines.join("\r\n") + "\r\n", "blank-submittal-form.csv");
   });
 
   /* ---------- submit: chunked requests for real progress ---------- */

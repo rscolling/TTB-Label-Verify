@@ -42,6 +42,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 LABELS_DIR = REPO_ROOT / "eval" / "labels"
 
 STAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$")
+ELAPSED_RE = re.compile(r"^\d+\.\ds$")       # per-row Time cell, e.g. "4.9s"
+CSV_SECONDS_RE = re.compile(r"^\d+\.\d$")    # processing_seconds export column, e.g. "4.9"
 
 CSV_FIELDS = [
     "brand",
@@ -232,6 +234,15 @@ class TestHappyScanWithCsv:
                 or ""
             ).strip()
             assert STAMP_RE.match(stamp), f"row {i} stamp {stamp!r}"
+        # R2 audit drift fix: per-label elapsed time is back on every row —
+        # a Time column showing that label's processing_time_ms as "N.Ns".
+        for i in range(5):
+            cell = (
+                worksheet_rows(page).nth(i).locator('td[data-label="Time"]').text_content()
+                or ""
+            ).strip()
+            assert ELAPSED_RE.match(cell), f"row {i} Time cell {cell!r}"
+            assert 0.0 <= float(cell[:-1]) < 60.0, f"row {i} implausible elapsed {cell!r}"
 
     def test_mismatched_row_is_failed_and_flagged(self, page, base_url):
         paths = label_paths(2)
@@ -341,7 +352,8 @@ class TestChunkedProgress:
 
 
 class TestCsvExport:
-    EXPECTED_COLUMNS = 5 + 7 * 2 + 1  # serial,filename,scan_timestamp,pass_fail,score, 7×(verdict,reason), error
+    # serial,filename,scan_timestamp,processing_seconds,pass_fail,score, 7×(verdict,reason), error
+    EXPECTED_COLUMNS = 6 + 7 * 2 + 1
 
     def test_export_reparses_with_serial_passfail_score_and_timestamp(
         self, page, base_url, tmp_path
@@ -366,7 +378,9 @@ class TestCsvExport:
 
         rows = list(csv.reader(io.StringIO(text)))
         header = rows[0]
-        assert header[:5] == ["serial", "filename", "scan_timestamp", "pass_fail", "score"]
+        assert header[:6] == [
+            "serial", "filename", "scan_timestamp", "processing_seconds", "pass_fail", "score",
+        ]
         for field in CSV_FIELDS:
             assert f"{field}_verdict" in header, field
             assert f"{field}_reason" in header, field
@@ -380,8 +394,13 @@ class TestCsvExport:
         for row in rows[1:]:
             parsed = datetime.fromisoformat(row[2])
             assert parsed.year >= 2026
-        assert rows[1][3] == "PASS" and rows[1][4] == "6/6"
-        assert rows[2][3] == "FAIL"
+        # processing_seconds is numeric with one decimal (R2 audit drift fix).
+        seconds_at = header.index("processing_seconds")
+        for row in rows[1:]:
+            assert CSV_SECONDS_RE.match(row[seconds_at]), row[seconds_at]
+            assert 0.0 <= float(row[seconds_at]) < 60.0, row[seconds_at]
+        assert rows[1][4] == "PASS" and rows[1][5] == "6/6"
+        assert rows[2][4] == "FAIL"
         verdict_at = header.index("brand_verdict")
         assert rows[1][verdict_at] == "match"
         assert rows[2][verdict_at] == "mismatch"
@@ -418,3 +437,66 @@ class TestCsvExport:
         for row in rows[1:]:
             for cell in row:
                 assert not cell.startswith(("=", "+", "@")), f"unguarded cell {cell!r}"
+
+
+class TestBlankSubmittalTemplate:
+    """Audit drift fix: a client-side downloadable blank submittal form so a
+    non-technical user never has to hand-author the 8-column CSV."""
+
+    MANIFEST_COLUMNS = [
+        "filename", "brand", "class_type", "abv", "net_contents",
+        "producer", "origin_country", "is_import",
+    ]
+
+    def download_template(self, page, tmp_path) -> bytes:
+        with page.expect_download() as download_info:
+            page.click("#template-download")
+        path = tmp_path / "blank-submittal-form.csv"
+        download_info.value.save_as(path)
+        return path.read_bytes()
+
+    def test_template_downloads_with_manifest_header_and_example_row(
+        self, page, base_url, tmp_path
+    ):
+        page.goto(base_url + "/")
+        # A real, keyboard-operable button.
+        assert page.evaluate("document.querySelector('#template-download').tagName") == "BUTTON"
+        raw = self.download_template(page, tmp_path)
+        # Same CSV hygiene as the worksheet export.
+        assert raw.startswith(b"\xef\xbb\xbf"), "template must start with a UTF-8 BOM"
+        text = raw.decode("utf-8-sig")
+        assert "\r\n" in text, "template must use CRLF line endings"
+
+        rows = list(csv.reader(io.StringIO(text)))
+        assert rows[0] == self.MANIFEST_COLUMNS, rows[0]
+        assert len(rows) == 2, "expected exactly header + one example row"
+        example = rows[1]
+        assert len(example) == len(self.MANIFEST_COLUMNS), example
+        assert example[0] == "my-label-photo.png"
+        assert example[1] == "Example Brand"
+        assert example[-1] == "false"
+
+    def test_downloaded_template_round_trips_as_the_submittal_csv(
+        self, page, base_url, tmp_path
+    ):
+        # Feed the template straight back in with a photo named like the
+        # example row: the manifest must parse and match — a real verdict row,
+        # never a manifest error or a no-application error row.
+        page.goto(base_url + "/")
+        raw = self.download_template(page, tmp_path)
+        page.set_input_files("#file-input", files=memory_files(["my-label-photo.png"]))
+        page.set_input_files(
+            "#csv-input",
+            files=[{"name": "blank-submittal-form.csv", "mimeType": "text/csv", "buffer": raw}],
+        )
+        page.click("#scan-button")
+        wait_for_banner(page)
+
+        playwright_api.expect(page.locator("#error-callout")).to_be_hidden()
+        playwright_api.expect(worksheet_rows(page)).to_have_count(1)
+        row = worksheet_rows(page).first
+        # Submittal data was used: a scored verdict, not ERROR / no-data review.
+        playwright_api.expect(row.locator(".status-badge")).not_to_have_text("ERROR")
+        playwright_api.expect(row.locator('td[data-label="Score"]')).to_contain_text(
+            "fields match"
+        )

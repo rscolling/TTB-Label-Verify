@@ -43,6 +43,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 SAMPLE_LABEL = REPO_ROOT / "eval" / "labels" / "01-bourbon-clean.png"
 
 STAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$")
+ELAPSED_RE = re.compile(r"^\d+\.\ds$")  # per-label elapsed time, e.g. "4.9s"
 
 XSS_IMG = '<img src=x onerror="window.__pwned=1">'
 XSS_SCRIPT = "<script>window.__pwned=1</script>"
@@ -219,6 +220,17 @@ class TestSinglephotoNoCsv:
             f"timestamp cell {stamp!r} does not match YYYY-MM-DD HH:MM:SS"
         )
 
+    def test_row_shows_per_label_elapsed_time(self, page, base_url):
+        # R2: "results back in about 5 seconds" — the elapsed time must be
+        # displayed in the UI on every result (audit drift fix: the WP5
+        # worksheet dropped it; restored as a per-row Time column).
+        scan_files(page, base_url, [str(SAMPLE_LABEL)])
+        wait_for_banner(page)
+        cell = worksheet_rows(page).first.locator('td[data-label="Time"]').text_content()
+        cell = (cell or "").strip()
+        assert ELAPSED_RE.match(cell), f"Time cell {cell!r} does not look like 'N.Ns'"
+        assert 0.0 <= float(cell[:-1]) < 60.0, cell
+
     def test_focus_lands_on_banner_when_scan_completes(self, page, base_url):
         scan_files(page, base_url, [str(SAMPLE_LABEL)])
         wait_for_banner(page)
@@ -258,9 +270,12 @@ class TestReviewDrillDown:
         # The label image, large, from a client-side object URL (R8: no server storage).
         src = panel.locator(".detail-figure img").get_attribute("src")
         assert src and src.startswith("blob:"), f"detail image should be a blob: URL, got {src!r}"
-        # Scan timestamp in the panel header (addendum).
+        # Scan timestamp + per-label elapsed time in the panel header
+        # (addendum + R2 audit drift fix): "Scanned 2026-07-18 19:42:07 · 4.9s".
         stamp_text = panel.locator(".detail-stamp").text_content() or ""
-        assert re.search(r"Scanned \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", stamp_text), stamp_text
+        assert re.search(
+            r"Scanned \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} · \d+\.\ds", stamp_text
+        ), stamp_text
         # Field-by-field comparison: submittal vs scan, verdict, reason.
         detail = panel.locator(".detail-table")
         playwright_api.expect(detail).to_contain_text("Submittal form says")
