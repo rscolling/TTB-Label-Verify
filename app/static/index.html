@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Label Checker — TTB Label Verification</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap">
+      <p class="agency">Alcohol and Tobacco Tax and Trade Bureau — Prototype</p>
+      <h1>Label Checker</h1>
+      <p class="tagline">
+        Add a photo of the label, type in what the application says, and we&rsquo;ll
+        compare them for you.
+      </p>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <form id="verify-form" novalidate>
+      <section class="card" aria-labelledby="upload-heading">
+        <h2 id="upload-heading"><span class="step-num" aria-hidden="true">1</span> Add the label photo</h2>
+        <div id="dropzone" class="dropzone">
+          <input type="file" id="file-input" accept="image/png,image/jpeg,image/webp,image/*" class="visually-hidden">
+          <div id="dropzone-empty">
+            <p class="dropzone-title">Drag the photo here</p>
+            <p class="dropzone-or">or</p>
+            <label for="file-input" class="button button-secondary">Choose a photo from your computer</label>
+            <p class="dropzone-hint">JPG or PNG photos work best.</p>
+          </div>
+          <div id="dropzone-preview" hidden>
+            <img id="preview-image" alt="Preview of the label photo you chose">
+            <p id="file-name" class="file-name"></p>
+            <label for="file-input" class="button button-secondary">Choose a different photo</label>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="form-heading">
+        <h2 id="form-heading"><span class="step-num" aria-hidden="true">2</span> Enter the application details</h2>
+        <p class="section-hint">Only the brand name is required. Fill in whatever else the application lists — we check what you provide.</p>
+
+        <div class="field">
+          <label for="brand">Brand name <span class="required-tag">(required)</span></label>
+          <input type="text" id="brand" name="brand" autocomplete="off" required>
+        </div>
+
+        <div class="field">
+          <label for="class_type">Kind of drink (class or type)</label>
+          <p class="field-hint" id="class-hint">For example: Kentucky Straight Bourbon Whiskey, Red Wine, India Pale Ale</p>
+          <input type="text" id="class_type" name="class_type" autocomplete="off" aria-describedby="class-hint">
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label for="abv">Alcohol content</label>
+            <p class="field-hint" id="abv-hint">For example: 45% or 90 proof</p>
+            <input type="text" id="abv" name="abv" autocomplete="off" aria-describedby="abv-hint">
+          </div>
+          <div class="field">
+            <label for="net_contents">Amount in the bottle (net contents)</label>
+            <p class="field-hint" id="net-hint">For example: 750 mL or 12 fl oz</p>
+            <input type="text" id="net_contents" name="net_contents" autocomplete="off" aria-describedby="net-hint">
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="producer">Producer name and address</label>
+          <p class="field-hint" id="producer-hint">The company that makes or bottles it, as written on the application</p>
+          <input type="text" id="producer" name="producer" autocomplete="off" aria-describedby="producer-hint">
+        </div>
+
+        <div class="field checkbox-field">
+          <input type="checkbox" id="is_import" name="is_import">
+          <label for="is_import">This product is imported from another country</label>
+        </div>
+
+        <div class="field" id="origin-field" hidden>
+          <label for="origin_country">Country it comes from</label>
+          <p class="field-hint" id="origin-hint">For example: France</p>
+          <input type="text" id="origin_country" name="origin_country" autocomplete="off" aria-describedby="origin-hint">
+        </div>
+      </section>
+
+      <div class="submit-row">
+        <button type="submit" id="check-button" class="button button-primary">Check This Label</button>
+      </div>
+    </form>
+
+    <div id="status" class="status" aria-live="polite">
+      <div id="progress" class="progress" hidden>
+        <span class="spinner" aria-hidden="true"></span>
+        <span>Reading the label&hellip; this usually takes a few seconds.</span>
+      </div>
+      <div id="error-callout" class="callout callout-error" role="alert" hidden>
+        <p class="callout-title">We couldn&rsquo;t check this label</p>
+        <p id="error-message"></p>
+      </div>
+    </div>
+
+    <section id="results" class="results" aria-live="polite" aria-labelledby="results-heading" hidden>
+      <h2 id="results-heading" class="visually-hidden">Results</h2>
+      <div id="banner" class="banner">
+        <span id="banner-icon" class="banner-icon" aria-hidden="true"></span>
+        <div>
+          <p id="banner-text" class="banner-text"></p>
+          <p id="timing" class="timing"></p>
+        </div>
+      </div>
+      <div class="results-layout">
+        <figure class="result-figure">
+          <img id="result-image" alt="The label photo that was checked">
+          <figcaption>The photo we checked</figcaption>
+        </figure>
+        <div class="table-scroll">
+          <table id="results-table">
+            <caption class="visually-hidden">Field-by-field comparison of the label and the application</caption>
+            <thead>
+              <tr>
+                <th scope="col">What we checked</th>
+                <th scope="col">Result</th>
+                <th scope="col">On the label</th>
+                <th scope="col">On the application</th>
+                <th scope="col">Explanation</th>
+              </tr>
+            </thead>
+            <tbody id="results-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <p>Photos are checked and then discarded — nothing you upload is saved.</p>
+      <p>This is a prototype. Results are a first pass to help reviewers, not a final compliance decision.</p>
+    </div>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

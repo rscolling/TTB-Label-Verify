@@ -8,11 +8,13 @@ from __future__ import annotations
 import time
 from dataclasses import asdict
 from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, Form, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.extraction import BadImageError, ClaudeExtractor, ExtractionError, Extractor, prepare_image
 from app.models import ApplicationData
@@ -20,7 +22,10 @@ from app.rules import overall_status, verify
 
 load_dotenv()
 
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+
 app = FastAPI(title="TTB Label Verification", version="0.1.0")
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
 @lru_cache(maxsize=1)
@@ -37,6 +42,12 @@ def _error(status_code: int, code: str, message: str) -> JSONResponse:
 def unexpected_error(request: Any, exc: Exception) -> JSONResponse:
     """Last-resort net: even an unforeseen bug renders the friendly error shape."""
     return _error(500, "internal_error", "Something went wrong on our end. Please try again.")
+
+
+@app.get("/", include_in_schema=False)
+def index() -> FileResponse:
+    """Serve the single-page UI."""
+    return FileResponse(STATIC_DIR / "index.html")
 
 
 @app.get("/api/health")
