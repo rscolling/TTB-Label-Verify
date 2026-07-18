@@ -1,23 +1,26 @@
 # TTB Label Verify
 
-A proof-of-concept web tool for TTB label compliance review. An agent uploads a
-photo of an alcohol beverage label plus the application data; one Claude vision
-call transcribes the label, and a deterministic rules engine compares the seven
-required fields (brand, class/type, alcohol content, net contents, producer,
-country of origin, government health warning) and returns a per-field verdict
-in a few seconds. Design rationale and requirements traceability are in
-[APPROACH.md](APPROACH.md).
+A proof-of-concept web tool for TTB label compliance review. An agent drops in
+label photos (one or hundreds) plus the submittal-form CSV; one Claude vision
+call per label transcribes it, and a deterministic rules engine compares the
+seven required fields (brand, class/type, alcohol content, net contents,
+producer, country of origin, government health warning). Every label becomes a
+row in a worksheet — serial number, timestamp, per-field verdict marks, a
+score, and a PASS / FAIL / REVIEW result — in a few seconds per label. Design
+rationale and requirements traceability are in [APPROACH.md](APPROACH.md).
 
 ## Screenshots
 
-Single label with mismatches found (wrong ABV, warning text differs, with a
-per-clause diff):
+The worksheet after a mixed scan — serials, timestamps, per-label time, the
+seven field columns with verdict marks, scores, and PASS / FAIL / REVIEW
+badges; flagged rows are tinted:
 
-![Single label result showing mismatched fields](docs/screenshots/single-label-mismatch.png)
+![Scan worksheet with pass, fail, and review rows](docs/screenshots/worksheet-mixed-scan.png)
 
-Batch check with per-label results and CSV export:
+The review drill-down on a failed row — the label photo, the submitted-vs-found
+comparison for every field, and the per-clause diff of the health warning:
 
-![Batch results table](docs/screenshots/batch-results.png)
+![Review drill-down showing the label photo, field comparison, and warning clause diff](docs/screenshots/review-drilldown.png)
 
 ## Quick start
 
@@ -42,23 +45,33 @@ docker run --rm -p 8000:8000 -e ANTHROPIC_API_KEY=your-key ttb-label-verify
 
 ## How to use
 
-**Check one label:** add the photo (drag-and-drop or file picker), type in what
-the application says (only the brand name is required), click "Check This
-Label". Each field renders as ✅ Matches / ⚠️ Needs review / ❌ Doesn't match
-with the label value, the application value, and a one-sentence explanation.
-The elapsed time is shown on every result.
+There is one flow, whether you have one label or three hundred:
 
-**Check many labels:** switch to the "Check many labels" tab and add up to 300
-photos. Application data comes from either:
+1. **Add the label photos.** Drag them into the drop zone or use the file
+   picker — 1 to 300 photos per scan.
+2. **Add the submittal form (CSV).** One row per photo, matched by file name —
+   the `filename` column must match the photo's name exactly. Click
+   "Download a blank submittal form (CSV)" to get a correct starting point
+   with the header row and an example row.
+3. **Click "Scan Labels".** Progress ticks as each sub-batch finishes and rows
+   appear in the worksheet as they land.
 
-- a CSV spreadsheet with one row per photo, matched by file name, or
-- one shared set of form fields applied to every photo (useful for
-  spot-checking a production run of the same product).
-
-Results stream in as each sub-batch finishes; download the full table as CSV
+Each worksheet row shows a serial number, the scan timestamp, the per-label
+processing time, a thumbnail, the seven extracted field values each with a
+✓ / ⚠ / ✗ / — mark, a score ("6/6 fields match"), and a PASS / FAIL / REVIEW
+result. Flagged rows (FAIL and REVIEW) open a drill-down — click the row or
+its Review button — showing the label photo large, the submitted-vs-found
+comparison per field with a one-sentence explanation, and a per-clause diff
+when the health warning text differs. Download the whole worksheet as CSV
 when done.
 
-CSV manifest format (`filename` and `brand` required, the rest optional):
+**No submittal form?** The photos are still scanned and the extracted columns
+filled in, but every row is flagged "No submittal data — needs review" —
+there is nothing to check the labels against. The statutory health-warning
+check still runs, so a wrong warning still fails.
+
+Submittal-form CSV format (`filename` and `brand` required, the rest
+optional):
 
 ```csv
 filename,brand,class_type,abv,net_contents,producer,origin_country,is_import
@@ -75,9 +88,10 @@ playwright install chromium      # once, for the browser E2E tests
 pytest
 ```
 
-The offline suite (308 tests, about 20 seconds) covers the rules engine, the
-API with a mocked extractor, real-browser E2E against a fake backend, and three
-adversarial QA suites. It never touches the network and needs no API key.
+The offline suite (335 tests, about 30 seconds) covers the rules engine, the
+API with a mocked extractor, real-browser E2E of the worksheet flow against a
+fake backend, and four adversarial QA gates. It never touches the network and
+needs no API key.
 
 Two paths need a real `ANTHROPIC_API_KEY`:
 

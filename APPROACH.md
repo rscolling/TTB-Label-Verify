@@ -36,14 +36,14 @@ decision that answers it, and where that decision is tested.
 
 | Stakeholder statement | Derived requirement | Design decision | Test evidence |
 |---|---|---|---|
-| Sarah Chen: "If we can't get results back in about 5 seconds, nobody's going to use it" (previous vendor pilot failed at 30-40 s) | < 5 s per label, end to end | One vision call per label, never chained; images downscaled to 1568 px before upload (`prepare_image`); elapsed time displayed on every single and batch result | `tests/test_extraction.py` (single call, downscale asserted), `tests/test_e2e_ui.py` (timer rendered in browser), `eval/run_eval.py` (per-label latency reported against the 5 s budget) |
-| Sarah Chen: accessibility — "something my mother could figure out"; team tech comfort ranges from recent grads to 50+ | Dead-simple UI, no jargon | Two numbered steps, drag-and-drop with a large fallback button, plain-language field hints with examples ("45% or 90 proof"), icon + text verdicts (✅ Matches / ⚠️ Needs review / ❌ Doesn't match — never icon alone), results tables collapse to stacked cards on narrow screens, focus moves to the result banner or error callout so screen readers announce outcomes | `tests/test_e2e_ui.py`, `tests/test_ui.py`, `tests/qa/test_qa2_e2e.py` (focus and a11y assertions), `tests/qa/test_qa3_e2e_batch.py` |
-| Sarah Chen: ~150,000 label applications/year, 47 agents, 5-10 min manual review per label; batch upload needed for peak seasons | Batch verification, 200-300 labels | One endpoint, two application-data modes: CSV manifest matched by file name (mirrors the spreadsheet-per-queue workflow agents already use) or shared form fields; 300-file cap enforced before any API spend; bounded concurrency (`BATCH_CONCURRENCY`, default 4); per-label isolation — one bad file becomes an error row, the batch continues; UI submits in sub-batches of 10 so the progress bar reflects real completion; CSV export of results | `tests/test_batch_api.py`, `tests/qa/test_qa3_batch_semantics.py` (cap-before-spend, isolation, exactly-300 admitted), `tests/test_e2e_batch_ui.py`, `tests/qa/test_qa3_e2e_batch.py` |
+| Sarah Chen: "If we can't get results back in about 5 seconds, nobody's going to use it" (previous vendor pilot failed at 30-40 s) | < 5 s per label, end to end | One vision call per label, never chained; images downscaled to 1568 px before upload (`prepare_image`); the per-label elapsed time is surfaced three ways — the worksheet's Time column on every row, the drill-down header ("Scanned 2026-07-18 19:42:07 · 4.9s"), and the `processing_seconds` column of the CSV export | `tests/test_e2e_ui.py` (`test_row_shows_per_label_elapsed_time`; drill-down header stamp asserted), `tests/test_e2e_batch_ui.py` (Time cell on every row; `processing_seconds` numeric in the export), `tests/qa/test_qa3_e2e_batch.py` (independent QA re-check of both), `tests/test_extraction.py` (single call, downscale asserted), `eval/run_eval.py` (per-label latency reported against the 5 s budget) |
+| Sarah Chen: accessibility — "something my mother could figure out"; team tech comfort ranges from recent grads to 50+ | Dead-simple UI, no jargon | One flow for one label or three hundred: drop the photos, add the submittal-form CSV (a "Download a blank submittal form (CSV)" button hands over a correct starting point), click Scan Labels. Plain-language column names ("Kind of drink", "Amount in bottle"), icon + text verdict marks (✓ / ⚠ / ✗ / — with accessible text, never color alone), flagged rows carry a visible flag and open a review drill-down with the photo and a plain-English field-by-field comparison; focus moves to the summary banner on completion and into the panel on open (Escape closes and returns focus); the worksheet collapses to stacked cards on narrow screens | `tests/test_e2e_ui.py`, `tests/test_ui.py`, `tests/qa/test_qa2_e2e.py` (focus and a11y assertions), `tests/qa/test_qa3_e2e_batch.py`, `tests/qa/test_qa4_worksheet_probes.py` |
+| Sarah Chen: ~150,000 label applications/year, 47 agents, 5-10 min manual review per label; batch upload needed for peak seasons | Batch verification, 200-300 labels | One endpoint; application data arrives as the submittal-form CSV matched by file name (mirrors the spreadsheet-per-queue workflow agents already use; shared form fields remain an API-level option); 300-file cap enforced before any API spend; bounded concurrency (`BATCH_CONCURRENCY`, default 4); per-label isolation — one bad file becomes an error row, the batch continues; UI submits in sub-batches of 10 so the progress bar reflects real completion; CSV export of results | `tests/test_batch_api.py`, `tests/qa/test_qa3_batch_semantics.py` (cap-before-spend, isolation, exactly-300 admitted), `tests/test_e2e_batch_ui.py`, `tests/qa/test_qa3_e2e_batch.py` |
 | Marcus Williams: infrastructure on Azure (post-FedRAMP 2019 migration); "network restricts outbound traffic to many domains" | Must be deployable inside TTB's network | The Anthropic API is the app's only outbound dependency, isolated behind the `Extractor` protocol; containerized (see [On-prem path](#on-prem--firewall-path)); swapping the backend is a one-class change | `tests/conftest.py` — the entire offline suite runs the real app against a fake extractor with zero outbound traffic, which is the swap demonstrated |
 | Marcus Williams: avoid sensitive data storage; this is a proof-of-concept | No persistence (R8) | Uploads processed in memory and discarded; no database, no files written, no image data echoed back in responses; API key lives server-side in an env var only | `tests/qa/test_qa3_batch_semantics.py` (`test_qa3_no_upload_bytes_persist_after_batch`, `test_qa3_response_contains_no_image_data`) |
 | Marcus Williams: existing COLA system is .NET; integration NOT required | Standalone tool | No COLA coupling; the JSON API (`/api/verify`, `/api/verify-batch`) is the seam a future .NET integration would call | `tests/test_api.py` (stable response contract), `tests/qa/test_qa2_contract.py` |
 | Dave Morrison: "STONE'S THROW" vs "Stone's Throw" are functionally identical; label review requires judgment beyond pattern matching | Tolerant text matching with a human-review lane | Brand and class/type use case-insensitive, whitespace-normalized fuzzy matching (rapidfuzz `token_sort_ratio`: >= 90 match, 75-89 review, < 75 mismatch). The middle band routes genuine judgment calls to the agent instead of forcing a binary verdict | `tests/test_text_match.py` (trap 1 named test), `tests/test_e2e_ui.py` (happy path uses exactly this brand pair) |
-| Dave Morrison: the tool must accelerate the workflow without adding friction | Fewer clicks, explanations not codes | Single page, one submit button, per-field one-sentence explanations; batch "What to look at" column names only the fields that need attention | `tests/test_ui.py`, `tests/test_e2e_batch_ui.py` |
+| Dave Morrison: the tool must accelerate the workflow without adding friction | Fewer clicks, explanations not codes | Single page, one Scan Labels button, per-field one-sentence explanations in the drill-down; the worksheet flags only the rows that need a human look (FAIL and REVIEW) and the score column says how many fields matched, so a clean batch is a column of green badges an agent can skim | `tests/test_ui.py`, `tests/test_e2e_batch_ui.py` |
 | Jenny Park: government warning requires exact match — word-for-word, all caps, bold | F7 strictness (27 CFR 16.21) | Whitespace/smart-quote normalization, then exact text comparison against the statutory text; "GOVERNMENT WARNING:" prefix checked for all caps on the case-preserved transcription (title case fails); on mismatch, a per-clause diff with word-level differences ("expected 'may' -> found 'might'"); bold is a best-effort vision self-report — "not bold" downgrades to review, never a silent pass or a hard fail (documented limitation) | `tests/test_warning.py` (traps 2-4), `tests/qa/test_qa_warning.py` (unicode whitespace, lowercase prefix), `tests/test_e2e_ui.py` (clause diff renders as prose) |
 | Jenny Park: handle imperfectly photographed labels (angles, lighting, glare) | Degrade to review, never a silent wrong verdict | The extractor flags uncertain fields; an uncertain reading of text that is present on the label has its match/mismatch verdict downgraded to ⚠️ needs review, while a confidently absent field keeps its decisive verdict (a missing-origin import still fails); the eval set includes angled and glare-degraded variants | `tests/test_engine.py` (trap 10), `eval/labels/15-bourbon-angled.png`, `eval/labels/16-bourbon-glare.png` with expected verdicts in `eval/manifest.json` |
 
@@ -65,9 +65,9 @@ payloads, no retry for permanent 4xx — is a small hand-written loop.
 **Deterministic rules, not LLM-as-judge.** Verdicts must be reproducible
 (same label, same answer, every time), auditable (an agent can read
 `app/rules/warning.py` and see exactly why title case fails), cheap (no second
-model call per field), and testable (the matchers carry 308 offline tests). A
+model call per field), and testable (the matchers carry 335 offline tests). A
 rule change is a reviewable code diff, not prompt drift. The rules engine and
-its callers are pinned by the 308-test offline suite. The model does the one
+its callers are pinned by the 335-test offline suite. The model does the one
 thing code cannot: read a photograph.
 
 **Extraction model choice.** `EXTRACTION_MODEL` (default `claude-sonnet-5`)
@@ -87,12 +87,34 @@ speed option, with these trade-offs. The call sets no sampling parameters —
 stability comes from the schema-forced output and the deterministic rules
 engine, not from sampling settings.
 
-**Growth path.** If this went to production the seams are already in place:
-the `Extractor` protocol takes an Azure-tenant or local backend; the batch
-endpoint's chunked processing would move behind a queue and worker pool; results
-would gain a persistent, append-only audit log (a deliberate PoC exclusion per
-the no-storage constraint); the JSON API would take auth and become the COLA
-integration surface. The rules engine would not change.
+**Production seams.** If this went to production the seams are already in
+place: the `Extractor` protocol takes an Azure-tenant or local backend; the
+batch endpoint's chunked processing would move behind a queue and worker pool;
+the JSON API would take auth and become the COLA integration surface. The
+rules engine would not change. The designed feature growth is in
+[What this grows into](#what-this-grows-into).
+
+**Persistence and the record of scans.** The tool deliberately stores nothing
+server-side — Marcus's constraint. Uploads are processed in memory and
+discarded, and the CSV export is the record of a scan: serial, filename,
+timestamp, processing seconds, pass/fail, score, and per-field verdicts with
+reasons. That is the right trade for a PoC, and it is also the model this
+grows into — the export columns are already the flattened form of a small
+relational schema, on Azure SQL inside TTB's FedRAMP tenant:
+
+```
+submissions(submission_id, applicant, class_family, received_at, declared fields)
+images(image_id, submission_id, blob_ref, sha256)
+scans(scan_id, submission_id, serial, model_id, scanned_at, latency_ms)
+field_verdicts(scan_id, field, extracted, declared, verdict, score, reason)
+review_events(scan_id, reviewer, action, decided_at, note)
+```
+
+`review_events` is the audit trail: every human decision on a flagged row
+becomes a recorded event with a reviewer, an action, and a timestamp — which
+is what turns a screening tool's output into a defensible record. The rules
+engine and API do not change; the client-side CSV builder becomes a set of
+inserts.
 
 ## On-prem / firewall path
 
@@ -106,20 +128,58 @@ domains — is answered by a seam, not a rewrite:
   TTB's tenant means implementing that protocol against an Azure OpenAI
   vision deployment in the FedRAMP boundary, or a locally hosted vision
   model — one class, zero changes to the rules engine, API, or UI.
-- The offline test suite already proves the swap: 308 tests run the full app
+- The offline test suite already proves the swap: 335 tests run the full app
   against a substitute extractor with no outbound traffic at all.
+
+## What this grows into
+
+The assignment's own guidance was to prefer a working core over ambitious but
+incomplete features, so the following is designed but deliberately deferred —
+each is a bounded extension of seams that already exist, not a rewrite.
+
+**Three-layer verification.** Today's engine checks one pair: what the label
+prints against what the application declares. But the regulations make the
+required elements vary by beverage type — a malt beverage, a wine, and a
+distilled spirit do not owe the same statements — so the full check is a
+triangle with a scored delta on each edge: federal requirements for the
+product's class ↔ the intake-form declarations ↔ the vision extraction.
+That yields three distinct findings per submission: *completeness* (is every
+element required for this class present somewhere on the label set),
+*consistency* (printed vs declared — today's engine, unchanged), and *form
+compliance* (did the application itself declare everything its class
+requires). The rules engine already renders per-field verdicts from declared
+pairs; the extension is a per-class requirements table and two more
+comparison passes over data the pipeline already carries.
+
+**Many images per submission.** A real COLA application is a label *set* —
+front, back, and neck labels for one product. The next step groups uploaded
+images by submission, takes the best reading of each field across the set
+(highest-confidence extraction wherever the field appears), and flags
+cross-image contradictions — a front label saying 45% and a back label saying
+40% is a finding in itself, distinct from either image disagreeing with the
+application. The worksheet row becomes one row per submission with per-image
+drill-down, and the `images`/`scans` split in the schema above is already
+shaped for it.
+
+**American-standard net contents.** The net-contents matcher normalizes
+metric units (mL, cL, L, fl oz). Malt beverages are labeled in American
+standard measure — pints, quarts, and compound statements like
+"1 PT. 6 FL. OZ." — which the parser does not yet read. This is a bounded
+parser extension in `app/rules/net_contents.py`: a unit table and compound
+parsing, feeding the same ±1% comparison in mL that every other statement
+already goes through.
 
 ## Testing and verification
 
-308 tests pass offline in about 20 seconds (`pytest`), plus one key-gated live
-test. Levels:
+335 tests pass offline in about 30 seconds (`pytest`), plus one key-gated live
+test (`pytest -m live`). Levels:
 
 | Level | What | Where |
 |-------|------|-------|
 | Unit | Every field matcher and parser: ABV/proof variants, unit conversions, warning normalization and caps check, fuzzy thresholds, N/A logic | `tests/test_alcohol.py`, `test_net_contents.py`, `test_warning.py`, `test_text_match.py`, `test_producer.py`, `test_origin.py`, `test_engine.py` |
 | API | FastAPI endpoints via TestClient with a mocked extractor: happy paths, every error path, batch partial-failure semantics | `tests/test_api.py`, `tests/test_batch_api.py`, `tests/test_ui.py` |
-| Browser E2E | Real headless Chromium (Playwright) against the real app with a fake backend: form flows, verdict rendering, clause diff as prose, error recovery, batch progress and CSV download | `tests/test_e2e_ui.py`, `tests/test_e2e_batch_ui.py` |
-| Adversarial QA | Independent suites in `tests/qa/` (never edited by the build side) | 3 QA gates, ~40% of the suite |
+| Browser E2E | Real headless Chromium (Playwright) against the real app with a fake backend: the worksheet flow with and without a submittal CSV, serials/timestamps/Time column, review drill-down and clause diff as prose, error recovery, progress and CSV export | `tests/test_e2e_ui.py`, `tests/test_e2e_batch_ui.py` |
+| Adversarial QA | Independent suites in `tests/qa/` (never edited by the build side) | 4 QA gates, ~40% of the suite |
 | Eval harness | 16 synthetic labels with ground-truth verdicts through the real pipeline | `eval/run_eval.py` (key-gated); its comparison logic is itself unit-tested offline in `tests/test_run_eval.py` |
 | Live smoke | One real vision call through the full pipeline | `pytest -m live` |
 
@@ -129,7 +189,14 @@ tests: a user-controlled 500 (application net contents of "0 mL" caused a
 ZeroDivisionError), unvalidated model output crashing the engine instead of
 surfacing as a friendly 502, FastAPI's default 500 body leaking instead of the
 documented error shape, and stale batch results persisting when new photos were
-selected. The QA suites also verify properties under attack rather than by
+selected. The worksheet redesign got the same treatment: an audit caught that
+WP5 had dropped the per-label elapsed time (restored as the Time column, the
+drill-down stamp, and `processing_seconds` in the export), and the QA4 pass
+found two result-integrity gaps, both fixed and pinned — the submittal CSV is
+now snapshotted at submit so swapping it mid-scan cannot affect a running
+scan, and results scored against a previous spreadsheet clear when a new CSV
+is chosen, the same rule as choosing new photos.
+The QA suites also verify properties under attack rather than by
 inspection: script-bearing filenames and label text render inert
 (XSS-by-construction), CSV export guards against spreadsheet formula injection,
 the 301-file cap fires before any extraction spend, and reported per-label

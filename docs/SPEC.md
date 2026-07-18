@@ -40,9 +40,10 @@ operate machinery, and may cause health problems."
   before upload, no chained calls).
 - **R4 Batch:** multi-file upload (target 200–300), concurrent processing with
   bounded parallelism, progress indicator ("Scanned X of N…", rows appear as
-  chunks land), worksheet results table, CSV export (serial, scan_timestamp,
-  pass/fail, score + per-field verdict/reason columns; UTF-8 BOM, all cells
-  quoted, formula-injection guard).
+  chunks land), worksheet results table, CSV export (serial, filename,
+  scan_timestamp, processing_seconds, pass/fail, score + per-field
+  verdict/reason columns; UTF-8 BOM, all cells quoted, formula-injection
+  guard).
 - **R5 UX (WP5 worksheet model):** dead-simple, ONE unified flow — no tabs.
   Large controls, drag-and-drop, plain language, no jargon, obvious buttons.
   Audience includes non-technical users age 50+.
@@ -54,7 +55,8 @@ operate machinery, and may cause health problems."
     application data arrives only via the submittal CSV.
   - Worksheet: one row per scanned label with a zero-padded serial number
     (001, 002, … in scan order), a per-row scan date-time stamp (local, 24h,
-    client-derived when that label's result lands), a thumbnail + filename,
+    client-derived when that label's result lands), a per-row Time column
+    (that label's processing time, "4.9s" — R2), a thumbnail + filename,
     the 7 extracted field values each with a compact status mark
     (✓ / ⚠ / ✗ / — — icon plus text/title, never color alone), a score
     ("6/7 fields match" — applicable fields that match), and a result:
@@ -69,7 +71,8 @@ operate machinery, and may cause health problems."
   - Review drill-down: clicking a flagged row or its Review button (a real
     <button>, keyboard-accessible) opens a detail panel: the label image
     large (client-side object URL — no server storage, preserves R8), the
-    scan timestamp, and the field-by-field comparison (submittal value vs
+    scan timestamp and per-label time ("Scanned 2026-07-18 19:42:07 · 4.9s"),
+    and the field-by-field comparison (submittal value vs
     extracted value, per-field verdict + reason, warning clause diff prose).
     Focus moves to the panel on open; Escape closes it and returns focus to
     the row's button. Completion focuses the summary banner (aria-live).

@@ -12,8 +12,8 @@ is DONE only when the QA agent signs off.
 | L1 Unit | Rules engine: every field matcher, every parser (ABV/proof variants, unit conversions, warning normalization + caps check, fuzzy thresholds, N/A logic) | pytest | No |
 | L2 Component/API | FastAPI endpoints via httpx TestClient with a mocked extractor: happy path, every error path (bad file, no label, API failure, timeout), batch partial-failure semantics | pytest + mock | No |
 | L3 Integration | Live Claude vision extraction against real sample label images; schema conformance; latency measured and reported against the 5s budget (harness gates on verdicts) | pytest, gated: skip cleanly when ANTHROPIC_API_KEY absent | Yes |
-| L4 E2E/UI | Browser-driven: drag-drop single label → per-field verdicts render; batch upload → progress + table + CSV downloads; error states render friendly messages | Playwright (or browser-pane manual protocol, scripted steps) | Yes (live) / No (mocked backend mode) |
-| L5 Eval harness | Synthetic label set with expected per-field verdicts; harness script prints pass/fail matrix; ALL expected verdicts must hold | scripts/run_eval.py | Yes |
+| L4 E2E/UI | Browser-driven: photos + submittal CSV → worksheet rows render (serial, timestamp, Time, field marks, score, PASS/FAIL/REVIEW); flagged rows open the review drill-down; no-CSV scan flags rows for review; progress + CSV export; error states render friendly messages | Playwright (or browser-pane manual protocol, scripted steps) | Yes (live) / No (mocked backend mode) |
+| L5 Eval harness | Synthetic label set with expected per-field verdicts; harness script prints pass/fail matrix; ALL expected verdicts must hold | eval/run_eval.py | Yes |
 | L6 Deploy smoke | Deployed URL from outside the network: health check, one real label end-to-end < 5s, batch of 5, error case | scripted curl/Playwright checklist | Yes |
 
 ## Canonical trap cases (must exist as named tests from L1 up)
