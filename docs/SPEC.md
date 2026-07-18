@@ -39,9 +39,42 @@ operate machinery, and may cause health problems."
   displayed in the UI on every result (single vision call, downscale images
   before upload, no chained calls).
 - **R4 Batch:** multi-file upload (target 200–300), concurrent processing with
-  bounded parallelism, progress indicator, results table, CSV export.
-- **R5 UX:** dead-simple. Large controls, drag-and-drop, plain language, no
-  jargon, obvious buttons. Audience includes non-technical users age 50+.
+  bounded parallelism, progress indicator ("Scanned X of N…", rows appear as
+  chunks land), worksheet results table, CSV export (serial, scan_timestamp,
+  pass/fail, score + per-field verdict/reason columns; UTF-8 BOM, all cells
+  quoted, formula-injection guard).
+- **R5 UX (WP5 worksheet model):** dead-simple, ONE unified flow — no tabs.
+  Large controls, drag-and-drop, plain language, no jargon, obvious buttons.
+  Audience includes non-technical users age 50+.
+  - Upload: a drag-and-drop zone accepting 1..N label photos (click-to-browse
+    kept) plus a clearly-labeled second slot for the submittal form — a CSV
+    with the batch-manifest columns (filename, brand, class_type, abv,
+    net_contents, producer, origin_country, is_import) — and one big
+    "Scan Labels" button. There is NO typed application-details form:
+    application data arrives only via the submittal CSV.
+  - Worksheet: one row per scanned label with a zero-padded serial number
+    (001, 002, … in scan order), a per-row scan date-time stamp (local, 24h,
+    client-derived when that label's result lands), a thumbnail + filename,
+    the 7 extracted field values each with a compact status mark
+    (✓ / ⚠ / ✗ / — — icon plus text/title, never color alone), a score
+    ("6/7 fields match" — applicable fields that match), and a result:
+    PASS (green, every applicable field matches), FAIL (red, any mismatch),
+    REVIEW (amber, worst issue is review-level). FAIL and REVIEW rows are
+    flagged for human review — row tint + flag icon.
+  - No CSV provided: photos are still scanned and extracted columns filled,
+    but the submittal-checked columns and score read "No submittal data —
+    needs review" and the row is flagged — never a silent pass. A single
+    photo with no CSV must work (replaces the old single-label flow). The
+    statutory health-warning check (F7) still renders a real verdict.
+  - Review drill-down: clicking a flagged row or its Review button (a real
+    <button>, keyboard-accessible) opens a detail panel: the label image
+    large (client-side object URL — no server storage, preserves R8), the
+    scan timestamp, and the field-by-field comparison (submittal value vs
+    extracted value, per-field verdict + reason, warning clause diff prose).
+    Focus moves to the panel on open; Escape closes it and returns focus to
+    the row's button. Completion focuses the summary banner (aria-live).
+  - 390px responsiveness: the worksheet collapses to stacked cards with
+    data-label column announcements; no horizontal page scrolling.
 - **R6 Robustness:** imperfect images (angle, glare, lighting) degrade
   gracefully — low-confidence extraction surfaces as ⚠️ needs-human-review,
   never a silent wrong verdict.
