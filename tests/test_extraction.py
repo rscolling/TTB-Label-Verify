@@ -141,7 +141,8 @@ class TestClaudeExtractorExtract:
         assert extracted.brand == "STONE'S THROW"
         assert extracted.alcohol_content == "90 Proof"
         assert extracted.warning_prefix_appears_bold is True
-        assert extracted.confidence == {"brand": 0.97}
+        assert extracted.confidence["brand"] == 0.97  # legacy per-field override wins
+        assert all(extracted.confidence[f] == 0.95 for f in extracted.confidence if f != "brand")
         assert extracted.label_detected is True
 
     def test_label_not_detected_passthrough(self):

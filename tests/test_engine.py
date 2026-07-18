@@ -3,7 +3,7 @@ downgrade (trap 10), overall status aggregation."""
 
 from dataclasses import replace
 
-from app.models import ApplicationData, Verdict
+from app.models import ApplicationData, ExtractedLabel, Verdict
 from app.rules import overall_status, verify
 
 
@@ -95,3 +95,32 @@ class TestOverallStatus:
 
     def test_match_when_clean(self, good_extraction):
         assert overall_status(verify(good_extraction, application())) == "match"
+
+
+def test_confidently_absent_field_keeps_decisive_verdict():
+    """Live-eval finding: origin absent on an import (confidence 0) must stay a
+    mismatch — the low-confidence downgrade applies only to uncertain readings
+    of text that is present."""
+    extracted = ExtractedLabel(
+        brand="Copper Hollow",
+        class_type=None,
+        alcohol_content=None,
+        net_contents=None,
+        producer=None,
+        origin_country=None,
+        government_warning=None,
+        warning_prefix_appears_bold=None,
+        confidence={"origin_country": 0.0},
+        label_detected=True,
+    )
+    application = ApplicationData(
+        brand="Copper Hollow",
+        class_type=None,
+        abv=None,
+        net_contents=None,
+        producer=None,
+        origin_country="Product of France",
+        is_import=True,
+    )
+    results = {r.field: r for r in verify(extracted, application)}
+    assert results["origin_country"].verdict is Verdict.MISMATCH

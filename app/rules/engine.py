@@ -36,12 +36,21 @@ def _not_provided(field: str, extracted: str | None) -> FieldResult:
     )
 
 
-def _apply_confidence(result: FieldResult, confidence: float | None) -> FieldResult:
-    """Attach extraction confidence; downgrade decisive verdicts when it is low."""
+def _apply_confidence(
+    result: FieldResult, confidence: float | None, extracted: str | None = None
+) -> FieldResult:
+    """Attach extraction confidence; downgrade decisive verdicts when it is low.
+
+    The downgrade only applies to uncertain readings of text that IS on the
+    label. A confidently absent field (extracted None, confidence 0) must keep
+    its decisive verdict — e.g. an import with no origin statement is a
+    mismatch, not a review.
+    """
     result.confidence = confidence
     if (
         confidence is not None
         and confidence < LOW_CONFIDENCE_THRESHOLD
+        and extracted is not None
         and result.verdict in (Verdict.MATCH, Verdict.MISMATCH)
     ):
         result.verdict = Verdict.REVIEW
@@ -63,38 +72,44 @@ def verify(extracted: ExtractedLabel, application: ApplicationData) -> list[Fiel
     government_warning = _as_text(extracted.government_warning)
 
     results = [
-        _apply_confidence(match_brand(brand, application.brand), conf.get("brand")),
+        _apply_confidence(match_brand(brand, application.brand), conf.get("brand"), brand),
         _apply_confidence(
             match_class_type(class_type, application.class_type)
             if application.class_type
             else _not_provided("class_type", class_type),
             conf.get("class_type"),
+            class_type,
         ),
         _apply_confidence(
             match_alcohol(alcohol_content, application.abv)
             if application.abv
             else _not_provided("abv", alcohol_content),
             conf.get("alcohol_content"),
+            alcohol_content,
         ),
         _apply_confidence(
             match_net_contents(net_contents, application.net_contents)
             if application.net_contents
             else _not_provided("net_contents", net_contents),
             conf.get("net_contents"),
+            net_contents,
         ),
         _apply_confidence(
             match_producer(producer, application.producer)
             if application.producer
             else _not_provided("producer", producer),
             conf.get("producer"),
+            producer,
         ),
         _apply_confidence(
             match_origin(origin_country, application.origin_country, application.is_import),
             conf.get("origin_country"),
+            origin_country,
         ),
         _apply_confidence(
             match_warning(government_warning, extracted.warning_prefix_appears_bold),
             conf.get("government_warning"),
+            government_warning,
         ),
     ]
     return results

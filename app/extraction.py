@@ -58,7 +58,22 @@ def prepare_image(image_bytes: bytes) -> tuple[bytes, str]:
 
 
 _FIELD_SCHEMA: dict[str, Any] = {"type": ["string", "null"]}
-_CONFIDENCE_SCHEMA: dict[str, Any] = {"type": "number", "minimum": 0, "maximum": 1}
+
+_FIELDS = (
+    "brand",
+    "class_type",
+    "alcohol_content",
+    "net_contents",
+    "producer",
+    "origin_country",
+    "government_warning",
+)
+
+# Confidence mapping: a usually-empty uncertain_fields list costs ~5 output
+# tokens where a 7-float confidence object cost ~70 — real latency (R2) for
+# zero information loss (the engine only thresholds at LOW_CONFIDENCE_THRESHOLD).
+_CONFIDENT = 0.95
+_UNCERTAIN = 0.4
 
 _EXTRACTION_TOOL: dict[str, Any] = {
     "name": "record_label_fields",
@@ -105,24 +120,17 @@ _EXTRACTION_TOOL: dict[str, Any] = {
                 "type": ["boolean", "null"],
                 "description": "Best-effort: does the 'GOVERNMENT WARNING:' prefix appear bolder than the body text?",
             },
-            "confidence": {
-                "type": "object",
-                "description": "Per-field transcription confidence, 0 to 1.",
-                "properties": {
-                    field: _CONFIDENCE_SCHEMA
-                    for field in (
-                        "brand",
-                        "class_type",
-                        "alcohol_content",
-                        "net_contents",
-                        "producer",
-                        "origin_country",
-                        "government_warning",
-                    )
-                },
+            "uncertain_fields": {
+                "type": "array",
+                "items": {"type": "string", "enum": list(_FIELDS)},
+                "description": (
+                    "Only the fields whose transcription you are NOT confident about "
+                    "(blurry, glared, steep angle, partially obscured). Empty when all "
+                    "readings are clear."
+                ),
             },
         },
-        "required": ["label_detected", "confidence"],
+        "required": ["label_detected", "uncertain_fields"],
     },
 }
 
@@ -206,7 +214,17 @@ class ClaudeExtractor:
         if tool_use is None or not isinstance(tool_use.input, dict):
             raise ExtractionError("The label reading service returned an unexpected response.")
         data: dict[str, Any] = tool_use.input
+        uncertain = data.get("uncertain_fields")
+        if not isinstance(uncertain, list):
+            uncertain = []
+        confidence = {
+            field: (_UNCERTAIN if field in uncertain else _CONFIDENT) for field in _FIELDS
+        }
         try:
+            # Tolerate (and validate) a legacy per-field confidence object too.
+            confidence.update(
+                {k: float(v) for k, v in (data.get("confidence") or {}).items()}
+            )
             return ExtractedLabel(
                 brand=data.get("brand"),
                 class_type=data.get("class_type"),
@@ -216,7 +234,7 @@ class ClaudeExtractor:
                 origin_country=data.get("origin_country"),
                 government_warning=data.get("government_warning"),
                 warning_prefix_appears_bold=data.get("warning_prefix_appears_bold"),
-                confidence={k: float(v) for k, v in (data.get("confidence") or {}).items()},
+                confidence=confidence,
                 label_detected=bool(data.get("label_detected", True)),
             )
         except (TypeError, ValueError) as exc:
