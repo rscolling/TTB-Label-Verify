@@ -19,6 +19,14 @@
   </header>
 
   <main class="wrap">
+    <div class="mode-tabs" role="tablist" aria-label="How many labels to check">
+      <button type="button" id="tab-single" class="mode-tab active" role="tab"
+              aria-selected="true" aria-controls="single-panel">Check one label</button>
+      <button type="button" id="tab-batch" class="mode-tab" role="tab"
+              aria-selected="false" aria-controls="batch-panel">Check many labels</button>
+    </div>
+
+    <div id="single-panel" role="tabpanel" aria-label="Check one label">
     <form id="verify-form" novalidate>
       <section class="card" aria-labelledby="upload-heading">
         <h2 id="upload-heading"><span class="step-num" aria-hidden="true">1</span> Add the label photo</h2>
@@ -131,6 +139,133 @@
         </div>
       </div>
     </section>
+    </div><!-- /single-panel -->
+
+    <div id="batch-panel" role="tabpanel" aria-label="Check many labels" hidden>
+      <form id="batch-form" novalidate>
+        <section class="card" aria-labelledby="batch-upload-heading">
+          <h2 id="batch-upload-heading"><span class="step-num" aria-hidden="true">1</span> Add all the label photos</h2>
+          <div id="batch-dropzone" class="dropzone">
+            <input type="file" id="batch-file-input" accept="image/png,image/jpeg,image/webp,image/*"
+                   multiple class="visually-hidden">
+            <div id="batch-dropzone-empty">
+              <p class="dropzone-title">Drag all the photos here</p>
+              <p class="dropzone-or">or</p>
+              <label for="batch-file-input" class="button button-secondary">Choose photos from your computer</label>
+              <p class="dropzone-hint">You can add up to 300 photos at a time.</p>
+            </div>
+            <div id="batch-dropzone-selected" hidden>
+              <p id="batch-file-summary" class="file-name"></p>
+              <label for="batch-file-input" class="button button-secondary">Choose different photos</label>
+            </div>
+          </div>
+        </section>
+
+        <section class="card" aria-labelledby="batch-form-heading">
+          <h2 id="batch-form-heading"><span class="step-num" aria-hidden="true">2</span> Add the application details</h2>
+          <p class="section-hint">
+            If every photo has its own application, add a spreadsheet (CSV file) with one
+            row per photo. If they all share the same application, skip the spreadsheet
+            and type the details once below.
+          </p>
+
+          <div class="field">
+            <label for="manifest-input">Spreadsheet with one row per photo (optional)</label>
+            <p class="field-hint" id="manifest-hint">
+              A CSV file with these columns: filename, brand, class_type, abv, net_contents,
+              producer, origin_country, is_import. We match each row to a photo by its file name.
+            </p>
+            <input type="file" id="manifest-input" accept=".csv,text/csv" aria-describedby="manifest-hint">
+            <p id="manifest-status" class="field-hint" hidden></p>
+            <button type="button" id="manifest-clear" class="button button-secondary" hidden>Remove the spreadsheet</button>
+          </div>
+
+          <fieldset id="batch-shared-fields" class="shared-fields">
+            <legend class="section-hint">Or use the same details for every photo:</legend>
+
+            <div class="field">
+              <label for="batch_brand">Brand name <span class="required-tag">(required without a spreadsheet)</span></label>
+              <input type="text" id="batch_brand" name="brand" autocomplete="off">
+            </div>
+
+            <div class="field">
+              <label for="batch_class_type">Kind of drink (class or type)</label>
+              <input type="text" id="batch_class_type" name="class_type" autocomplete="off">
+            </div>
+
+            <div class="field-row">
+              <div class="field">
+                <label for="batch_abv">Alcohol content</label>
+                <input type="text" id="batch_abv" name="abv" autocomplete="off">
+              </div>
+              <div class="field">
+                <label for="batch_net_contents">Amount in the bottle (net contents)</label>
+                <input type="text" id="batch_net_contents" name="net_contents" autocomplete="off">
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="batch_producer">Producer name and address</label>
+              <input type="text" id="batch_producer" name="producer" autocomplete="off">
+            </div>
+
+            <div class="field checkbox-field">
+              <input type="checkbox" id="batch_is_import" name="is_import">
+              <label for="batch_is_import">These products are imported from another country</label>
+            </div>
+
+            <div class="field" id="batch-origin-field" hidden>
+              <label for="batch_origin_country">Country they come from</label>
+              <input type="text" id="batch_origin_country" name="origin_country" autocomplete="off">
+            </div>
+          </fieldset>
+        </section>
+
+        <div class="submit-row">
+          <button type="submit" id="batch-check-button" class="button button-primary">Check All Labels</button>
+        </div>
+      </form>
+
+      <div id="batch-status" class="status" aria-live="polite">
+        <div id="batch-progress" class="progress-block" hidden>
+          <p class="progress"><span class="spinner" aria-hidden="true"></span>
+            <span id="batch-progress-text">Checking&hellip;</span></p>
+          <progress id="batch-progress-bar" max="1" value="0"></progress>
+        </div>
+        <div id="batch-error" class="callout callout-error" role="alert" hidden>
+          <p class="callout-title">We couldn&rsquo;t check these labels</p>
+          <p id="batch-error-message"></p>
+        </div>
+      </div>
+
+      <section id="batch-results" class="results" aria-live="polite" aria-labelledby="batch-results-heading" hidden>
+        <h2 id="batch-results-heading" class="visually-hidden">Batch results</h2>
+        <div id="batch-banner" class="banner">
+          <span id="batch-banner-icon" class="banner-icon" aria-hidden="true"></span>
+          <div>
+            <p id="batch-banner-text" class="banner-text"></p>
+            <p id="batch-timing" class="timing"></p>
+          </div>
+        </div>
+        <div class="batch-toolbar">
+          <button type="button" id="batch-download" class="button button-secondary">Download results (CSV)</button>
+        </div>
+        <div class="table-scroll">
+          <table id="batch-results-table">
+            <caption class="visually-hidden">Result for each label photo</caption>
+            <thead>
+              <tr>
+                <th scope="col">Photo</th>
+                <th scope="col">Result</th>
+                <th scope="col">What to look at</th>
+                <th scope="col"><span class="visually-hidden">Details</span></th>
+              </tr>
+            </thead>
+            <tbody id="batch-results-body"></tbody>
+          </table>
+        </div>
+      </section>
+    </div><!-- /batch-panel -->
   </main>
 
   <footer class="site-footer">
@@ -141,5 +276,6 @@
   </footer>
 
   <script src="/static/app.js"></script>
+  <script src="/static/batch.js"></script>
 </body>
 </html>
