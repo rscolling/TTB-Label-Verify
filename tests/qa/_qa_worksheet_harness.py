@@ -24,10 +24,10 @@ import pytest
 import uvicorn
 from PIL import Image
 
-from app.main import app, get_extractor
+from app.main import app, get_extractor, get_form_extractor
 from app.models import ExtractedLabel
 from app.rules.warning import CANONICAL_WARNING
-from tests.conftest import HIGH_CONFIDENCE, FakeExtractor
+from tests.conftest import HIGH_CONFIDENCE, FakeExtractor, FakeFormExtractor
 
 # Two distinct XSS payloads: an onerror image (fires on HTML parse) and a
 # script tag. Either executing sets window.__pwned. If the UI is safe, both
@@ -91,6 +91,22 @@ def csv_payload(text: str, name: str = "submittal.csv") -> list[dict]:
     return [{"name": name, "mimeType": "text/csv", "buffer": text.encode("utf-8")}]
 
 
+def pdf_payload(name: str = "submittal.pdf") -> list[dict]:
+    """Real PDF magic bytes; content never reaches a model — the fake answers."""
+    return [{"name": name, "mimeType": "application/pdf", "buffer": b"%PDF-1.4 fake form"}]
+
+
+def xlsx_bytes(rows: list[list[object]]) -> bytes:
+    import openpyxl
+
+    workbook = openpyxl.Workbook()
+    for row in rows:
+        workbook.active.append(row)
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+    return buffer.getvalue()
+
+
 class SwitchableExtractor:
     """One extractor instance whose behavior each test can reconfigure."""
 
@@ -113,10 +129,24 @@ class SlowFakeExtractor(FakeExtractor):
         return super().extract(image_bytes)
 
 
-def serve(extractor) -> "typing.Iterator[str]":  # noqa: F821 - doc only
+class SwitchableFormExtractor:
+    """One WP7 form extractor whose behavior each test can reconfigure."""
+
+    def __init__(self) -> None:
+        self.delegate = FakeFormExtractor()
+
+    def extract_rows(self, raw: bytes, kind: str) -> list:
+        return self.delegate.extract_rows(raw, kind)
+
+
+def serve(extractor, form_extractor=None) -> "typing.Iterator[str]":  # noqa: F821 - doc only
     """Generator for a module-scoped base_url fixture: real FastAPI app on a
-    free loopback port in a background uvicorn thread, extractor overridden."""
+    free loopback port in a background uvicorn thread, extractor(s) overridden.
+    Pass ``form_extractor`` to also fake the WP7 form-ingestion extractor (so
+    the PDF/photo form path runs with zero API calls)."""
     app.dependency_overrides[get_extractor] = lambda: extractor
+    if form_extractor is not None:
+        app.dependency_overrides[get_form_extractor] = lambda: form_extractor
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
         port = probe.getsockname()[1]
@@ -160,6 +190,13 @@ def worksheet_rows(page):
 def wait_for_banner(playwright_api, page, timeout: int = 15_000):
     playwright_api.expect(page.locator("#banner-text")).to_contain_text(
         "scanned", timeout=timeout
+    )
+
+
+def wait_for_ingest(playwright_api, page, timeout: int = 10_000):
+    """Wait for the async /api/ingest-form preview to land ("Read N rows …")."""
+    playwright_api.expect(page.locator("#csv-status")).to_contain_text(
+        "Read ", timeout=timeout
     )
 
 
