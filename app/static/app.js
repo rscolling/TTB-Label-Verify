@@ -92,7 +92,6 @@
   var timing = document.getElementById("timing");
   var worksheetBody = document.getElementById("worksheet-body");
   var downloadButton = document.getElementById("download-csv");
-  var templateButton = document.getElementById("template-download");
 
   var selectedFiles = [];
   var csvFile = null;
@@ -779,29 +778,6 @@
 
   downloadButton.addEventListener("click", function () {
     downloadCsvText(buildCsv(rows), "label-scan-worksheet.csv");
-  });
-
-  /* ---------- blank submittal-form template (client-side, no endpoint) ----------
-     With the typed form gone, checking even one label needs the 8-column
-     submittal CSV. This hands the user a correct starting point: the exact
-     batch-manifest header plus one obviously-fictional example row. Same CSV
-     hygiene as the export: UTF-8 BOM, all cells quoted, CRLF. */
-
-  var TEMPLATE_HEADER = [
-    "filename", "brand", "class_type", "abv", "net_contents",
-    "producer", "origin_country", "is_import"
-  ];
-  var TEMPLATE_EXAMPLE = [
-    "my-label-photo.png", "Example Brand", "Kentucky Straight Bourbon Whiskey",
-    "45%", "750 mL", "Example Distilling Co., 123 Main St, Anytown KY", "", "false"
-  ];
-
-  templateButton.addEventListener("click", function () {
-    var lines = [
-      TEMPLATE_HEADER.map(csvCell).join(","),
-      TEMPLATE_EXAMPLE.map(csvCell).join(",")
-    ];
-    downloadCsvText("﻿" + lines.join("\r\n") + "\r\n", "blank-submittal-form.csv");
   });
 
   /* ---------- submit: chunked requests for real progress ---------- */

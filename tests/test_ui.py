@@ -75,13 +75,11 @@ class TestIndexPage:
         assert 'id="csv-status"' in html
         assert 'id="csv-clear"' in html
 
-    def test_blank_submittal_template_control_is_present(self, client):
-        # Audit drift fix: with the typed form gone, non-technical users need
-        # a starting point for the 8-column submittal CSV — a downloadable
-        # blank template next to the upload slot, plus a plain-language hint.
+    def test_submittal_hint_is_present(self, client):
+        # Plain-language guidance next to the CSV drop zone (the owner removed
+        # the blank-template download button; the hint stays).
         html = client.get("/").text
-        assert 'id="template-download"' in html
-        assert "Download a blank submittal form (CSV)" in html
+        assert 'id="template-download"' not in html
         assert "must match the photo" in html
 
     def test_page_is_plain_language_no_jargon(self, client):

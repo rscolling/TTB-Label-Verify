@@ -3,18 +3,14 @@
 Small, sharp probes of surfaces that did not exist before the worksheet
 redesign, plus findings from re-baselining the stale-state rules:
 
-  * The blank submittal-form template download: header must exactly match
-    what the server-side manifest parser accepts; every cell quoted; the
-    example row must not be formula-interpretable; the artifact must round-
-    trip through app.batch.parse_manifest unchanged.
   * The drill-down for an error-entry row (no verdicts): friendly prose,
     no undefined/NaN text, no dangling elapsed-time fragment.
   * Manifest edge semantics through the UI: a photo listed twice in the CSV
     under case-differing filenames (structural 400, rendered inertly), and a
     CSV row with no matching photo (ignored — no ghost worksheet row).
-  * FINDINGS (test_qa4_finding_* — expected to FAIL until fixed): the
-    submittal-CSV input does not participate in the stale-state rules that
-    the photo input honors.
+  * Stale-state rules for the submittal-CSV input (test_qa4_finding_* —
+    filed as failing findings, since fixed: snapshot-at-submit + clear on
+    CSV change).
 
 Same harness as test_qa2_e2e.py. Marked ``e2e``; skips cleanly when
 Playwright/Chromium is unavailable. No API key, no network beyond localhost.
@@ -22,8 +18,6 @@ Playwright/Chromium is unavailable. No API key, no network beyond localhost.
 
 from __future__ import annotations
 
-import csv
-import io
 import re
 
 import pytest
@@ -32,7 +26,6 @@ playwright_api = pytest.importorskip(
     "playwright.sync_api", reason="playwright is not installed"
 )
 
-from app.batch import ALL_COLUMNS, parse_manifest
 from app.extraction import ExtractionError
 from tests.conftest import FakeExtractor
 from tests.qa._qa_worksheet_harness import (
@@ -43,7 +36,6 @@ from tests.qa._qa_worksheet_harness import (
     SwitchableExtractor,
     browser_page,
     csv_payload,
-    download_via,
     memory_files,
     serve,
     wait_for_banner,
@@ -77,51 +69,6 @@ def base_url(extractor: SwitchableExtractor):
 @pytest.fixture(scope="module")
 def page(base_url):
     yield from browser_page(playwright_api)
-
-
-class TestQa4TemplateDownload:
-    def test_qa4_template_header_matches_manifest_parser_and_cells_are_quoted(
-        self, page, base_url, tmp_path
-    ):
-        page.goto(base_url + "/")
-        raw = download_via(page, "#template-download", tmp_path, "template.csv")
-
-        assert raw.startswith(b"\xef\xbb\xbf"), "template must start with a UTF-8 BOM"
-        text = raw.decode("utf-8-sig")
-        assert "\r\n" in text, "template must use CRLF line endings"
-
-        rows = list(csv.reader(io.StringIO(text)))
-        # The header must be EXACTLY the column set the server-side manifest
-        # parser accepts — no drift between the handout and the parser.
-        assert rows[0] == list(ALL_COLUMNS), rows[0]
-        assert len(rows) == 2, "expected exactly header + one example row"
-
-        # The example row cannot be formula-interpreted: no cell may parse to
-        # a value with a formula-leading character, AND every physical cell in
-        # the file is quoted (Excel treats "=..." inside quotes as text only
-        # when the cell is properly quoted).
-        for cell in rows[1]:
-            assert not cell.startswith(("=", "+", "-", "@")), (
-                f"formula-interpretable template cell {cell!r}"
-            )
-        for line in text.strip().split("\r\n"):
-            assert line.startswith('"') and line.endswith('"'), (
-                f"unquoted cells in template line {line!r}"
-            )
-
-    def test_qa4_template_round_trips_through_the_manifest_parser(
-        self, page, base_url, tmp_path
-    ):
-        # The downloaded artifact must be directly usable as the submittal
-        # CSV: feed the raw bytes to the same parser the endpoint uses.
-        page.goto(base_url + "/")
-        raw = download_via(page, "#template-download", tmp_path, "template-rt.csv")
-        applications = parse_manifest(raw)  # must not raise ManifestError
-        assert list(applications) == ["my-label-photo.png"]
-        example = applications["my-label-photo.png"]
-        assert example.brand == "Example Brand"
-        assert example.is_import is False
-        assert example.net_contents == "750 mL"
 
 
 class TestQa4ErrorEntryDrillDown:
