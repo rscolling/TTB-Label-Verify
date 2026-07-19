@@ -49,12 +49,20 @@ There is one flow, whether you have one label or three hundred:
 
 1. **Add the label photos.** Drag them into the drop zone or use the file
    picker — 1 to 300 photos per scan.
-2. **Add the submittal form (CSV).** Drag it into its own drop zone or use
-   "Choose form from your computer". One row per photo, matched by file name —
-   the `filename` column must match the photo's name exactly (columns:
-   `filename,brand,class_type,abv,net_contents,producer,origin_country,is_import`).
-3. **Click "Scan Labels".** Progress ticks as each sub-batch finishes and rows
-   appear in the worksheet as they land.
+2. **Add the submittal form** — in whatever format the applicant sent: a CSV
+   or TSV, an Excel sheet (`.xlsx`), a PDF, or a photo of the form. One row
+   per label. Spreadsheet formats are parsed deterministically
+   (case-insensitive column aliases like "Class Type" or "Alcohol Content"
+   are fine); PDFs and photos are transcribed by the document reader. The
+   parsed rows appear under "Show what was read" so you can eyeball the parse
+   before scanning.
+3. **Press "Run".** Progress ticks as each sub-batch finishes and rows appear
+   in the worksheet as they land.
+
+Rows that name a photo file are matched by file name. If the form has no
+file names, rows are matched to photos **in order** (a persistent notice
+reminds you to check the pairings); if the row and photo counts differ, the
+scan is blocked with an explanation rather than guessing.
 
 Each worksheet row shows a serial number, the scan timestamp, the per-label
 processing time, a thumbnail, the seven extracted field values each with a
@@ -70,8 +78,16 @@ filled in, but every row is flagged "No submittal data — needs review" —
 there is nothing to check the labels against. The statutory health-warning
 check still runs, so a wrong warning still fails.
 
-Submittal-form CSV format (`filename` and `brand` required, the rest
-optional):
+**Required-elements check.** Independent of the submittal comparison, each row
+is checked for the elements TTB requires on every label of its class family
+(brand, class/type, net contents, producer, health warning — plus alcohol
+content for wine and distilled spirits). An element not found in the photo
+flags the row for review — not failure, since net contents or the producer
+statement may be embossed on the container and the warning may sit on another
+label of the set. Details and citations are in [APPROACH.md](APPROACH.md).
+
+Submittal-form CSV format (`brand` required, the rest optional — `filename`
+recommended so rows match photos by name):
 
 ```csv
 filename,brand,class_type,abv,net_contents,producer,origin_country,is_import
@@ -88,10 +104,10 @@ playwright install chromium      # once, for the browser E2E tests
 pytest
 ```
 
-The offline suite (335 tests, about 30 seconds) covers the rules engine, the
-API with a mocked extractor, real-browser E2E of the worksheet flow against a
-fake backend, and four adversarial QA gates. It never touches the network and
-needs no API key.
+The offline suite (403 tests, about 35 seconds) covers the rules engine, the
+form-ingestion parsers, the API with mocked extractors, real-browser E2E of
+the worksheet flow against a fake backend, and four adversarial QA gates. It
+never touches the network and needs no API key.
 
 Two paths need a real `ANTHROPIC_API_KEY`:
 
@@ -106,7 +122,7 @@ python eval/run_eval.py      # full 16-label eval against ground truth
 |----------|---------|---------|
 | `ANTHROPIC_API_KEY` | (none) | Server-side only; required for real label extraction. Never sent to the browser. |
 | `BATCH_CONCURRENCY` | `4` | How many labels are processed in parallel during a batch. |
-| `EXTRACTION_MODEL` | `claude-sonnet-5` | Vision model used for extraction. `claude-haiku-4-5-20251001` measured faster on the eval set, with trade-offs documented in [APPROACH.md](APPROACH.md). |
+| `EXTRACTION_MODEL` | `claude-sonnet-5` | Model used for label extraction and PDF/photo form reading. `claude-haiku-4-5-20251001` measured faster on the eval set, with trade-offs documented in [APPROACH.md](APPROACH.md). |
 
 ## Repo layout
 

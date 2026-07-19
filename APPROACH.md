@@ -2,19 +2,32 @@
 
 ## Architecture
 
-**AI for perception, code for judgment.** One Claude vision call
-(`claude-sonnet-5` by default; the `EXTRACTION_MODEL` knob and its measured
-trade-offs are under [Technical choices](#technical-choices-for-this-scope) —
-structured output via a forced tool-use schema) transcribes the seven required
-fields off the label image and lists any fields whose reading is uncertain. A
-deterministic, unit-tested Python rules engine then renders every verdict. No
-verdict is ever produced by the model: a compliance agency needs matching rules
-that are auditable, testable, and explainable, and that behave identically on
-the same input every time. The LLM is treated as an OCR-with-context sensor
-whose output is checked by code.
+**AI for perception, code for judgment.** The LLM now perceives BOTH documents
+in the comparison — a Claude vision call transcribes the seven required fields
+off each label photo, and, when the submittal form arrives as a PDF or a photo
+rather than a spreadsheet, a second document-extraction call transcribes the
+form's application rows (`claude-sonnet-5` by default; the `EXTRACTION_MODEL`
+knob and its measured trade-offs are under
+[Technical choices](#technical-choices-for-this-scope) — structured output via
+forced tool-use schemas in both cases). A deterministic, unit-tested Python
+rules engine then renders every verdict. No verdict is ever produced by a
+model: a compliance agency needs matching rules that are auditable, testable,
+and explainable, and that behave identically on the same input every time.
+Each LLM call is treated as an OCR-with-context sensor whose output is checked
+by code — and the form transcription is previewed to the agent ("Show what was
+read") before a single label is scanned.
 
 ```
 browser (single page, vanilla JS)
+   |  multipart POST /api/ingest-form          (WP7: the submittal form, any format)
+   v
+form ingestion (app/form_ingest.py)            dispatch by extension + magic bytes
+   |-- .csv/.tsv/.txt/.xlsx --> deterministic parsers (header aliases)
+   |-- .pdf/.png/.jpg       --> ClaudeFormExtractor: ONE document call,
+   |                            forced tool-use structured output
+   v
+normalized rows + source_kind + warnings  -->  previewed, then serialized back
+                                               to the canonical CSV manifest
    |  multipart POST /api/verify | /api/verify-batch
    v
 FastAPI (app/main.py)
@@ -28,6 +41,61 @@ rules engine (app/rules/)      deterministic matchers, F1-F7
 JSON: per-field verdicts, overall status, elapsed time
 ```
 
+### Format-agnostic submittal form (WP7)
+
+The submittal form's input format is unknown — agents receive whatever the
+applicant sent. `POST /api/ingest-form` (additive; the batch endpoint's
+contract is untouched) detects the format by extension AND magic bytes (a PDF
+renamed `.csv` still routes to the PDF path), parses spreadsheet formats
+deterministically with case-insensitive header aliases ("Class Type",
+"Alcohol Content", "Import"), and sends PDFs/photos through
+`ClaudeFormExtractor` — the same engineering as the label extractor (lazy
+client, forced tool use, one retry for transient failures, immediate failure
+on permanent 4xx, `EXTRACTION_MODEL` knob) with a transcribe-only system
+prompt: what the form says, never invented, null for absent. The client
+serializes the previewed rows back to the canonical CSV `manifest` at scan
+time, so `/api/verify-batch` — and every QA contract locked around it — is
+byte-identical; plain CSVs skip the round-trip entirely and ship raw, keeping
+the server's manifest parser the authority.
+
+Matching is deterministic and never guesses: rows naming a photo file match
+by normalized file name (existing server behavior); a form with no file names
+matches rows to photos in selection order only when the counts are equal
+(with a persistent "check the pairings" notice) and blocks the scan with an
+explanation otherwise; in mixed forms the leftover rows pair by order only
+when unambiguous, else the unmatched photos scan as flagged
+no-submittal-data rows.
+
+### Required-elements check (per class family, TTB-cited)
+
+A second deterministic slice — zero extra model calls, client-derived like
+score and pass/fail — checks each row for the elements TTB requires on every
+label of its class family, sourced from TTB's mandatory-label-information
+guidance: malt beverages 27 CFR part 7 subpart E (TTB G 2023-12), distilled
+spirits 27 CFR 5.61/5.64/5.65/5.141 (TTB G 2021-2), wine 27 CFR 4.32–4.36
+(TTB G 2019-8). The family is inferred from the declared (else extracted)
+class/type by keyword; unknown classes get the generic core. All families
+require brand, class/type, net contents, producer, and the health warning
+(27 CFR part 16); wine and spirits additionally require alcohol content —
+for malt beverages ABV is conditional (27 CFR 7.63(a)(3)) and stays
+informational. Origin for imports (27 CFR 7.69, CBP rules) is already
+enforced deterministically by the rules engine off the submittal's
+`is_import` flag.
+
+A required element not found in the photo flags the row at **REVIEW**, not
+FAIL: net contents and the producer statement may be blown, embossed, or
+molded into the container (7.70, 7.66–7.68) and the warning may sit on a
+front, back, or side label, so a single photo legitimately may not show them
+— the drill-down's "Required on every label" section says exactly that, with
+one specially worded case (distilled spirits must show alcohol content in the
+same field of vision as the brand and class, 27 CFR 5.61). A real mismatch
+still FAILs; the flag composes with the worst-issue logic and never
+downgrades. This prototype encodes the malt-beverage-compatible core plus the
+three-family ABV variance; the finer per-class variances (appellation of
+origin 4.23/4.27, sub-7%-ABV wines under FDA rules, ingredient disclosures
+such as sulfites and FD&C Yellow No. 5 per 7.63(b)) remain the documented
+growth path below.
+
 ## Requirements traceability
 
 The assignment's requirements were embedded in stakeholder interviews. This
@@ -37,13 +105,13 @@ decision that answers it, and where that decision is tested.
 | Stakeholder statement | Derived requirement | Design decision | Test evidence |
 |---|---|---|---|
 | Sarah Chen: "If we can't get results back in about 5 seconds, nobody's going to use it" (previous vendor pilot failed at 30-40 s) | < 5 s per label, end to end | One vision call per label, never chained; images downscaled to 1568 px before upload (`prepare_image`); the per-label elapsed time is surfaced three ways — the worksheet's Time column on every row, the drill-down header ("Scanned 2026-07-18 19:42:07 · 4.9s"), and the `processing_seconds` column of the CSV export | `tests/test_e2e_ui.py` (`test_row_shows_per_label_elapsed_time`; drill-down header stamp asserted), `tests/test_e2e_batch_ui.py` (Time cell on every row; `processing_seconds` numeric in the export), `tests/qa/test_qa3_e2e_batch.py` (independent QA re-check of both), `tests/test_extraction.py` (single call, downscale asserted), `eval/run_eval.py` (per-label latency reported against the 5 s budget) |
-| Sarah Chen: accessibility — "something my mother could figure out"; team tech comfort ranges from recent grads to 50+ | Dead-simple UI, no jargon | One flow for one label or three hundred: drop the photos, add the submittal-form CSV in its own matching drop zone, click Scan Labels. Plain-language column names ("Kind of drink", "Amount in bottle"), icon + text verdict marks (✓ / ⚠ / ✗ / — with accessible text, never color alone), flagged rows carry a visible flag and open a review drill-down with the photo and a plain-English field-by-field comparison; focus moves to the summary banner on completion and into the panel on open (Escape closes and returns focus); the worksheet collapses to stacked cards on narrow screens | `tests/test_e2e_ui.py`, `tests/test_ui.py`, `tests/qa/test_qa2_e2e.py` (focus and a11y assertions), `tests/qa/test_qa3_e2e_batch.py`, `tests/qa/test_qa4_worksheet_probes.py` |
+| Sarah Chen: accessibility — "something my mother could figure out"; team tech comfort ranges from recent grads to 50+ | Dead-simple UI, no jargon | One flow for one label or three hundred: drop the photos, add the submittal form (CSV, Excel, PDF, or a photo — WP7) in its own matching drop zone, press Run. Plain-language column names ("Kind of drink", "Amount in bottle"), icon + text verdict marks (✓ / ⚠ / ✗ / — with accessible text, never color alone), flagged rows carry a visible flag and open a review drill-down with the photo and a plain-English field-by-field comparison; focus moves to the summary banner on completion and into the panel on open (Escape closes and returns focus); the worksheet collapses to stacked cards on narrow screens | `tests/test_e2e_ui.py`, `tests/test_ui.py`, `tests/qa/test_qa2_e2e.py` (focus and a11y assertions), `tests/qa/test_qa3_e2e_batch.py`, `tests/qa/test_qa4_worksheet_probes.py` |
 | Sarah Chen: ~150,000 label applications/year, 47 agents, 5-10 min manual review per label; batch upload needed for peak seasons | Batch verification, 200-300 labels | One endpoint; application data arrives as the submittal-form CSV matched by file name (mirrors the spreadsheet-per-queue workflow agents already use; shared form fields remain an API-level option); 300-file cap enforced before any API spend; bounded concurrency (`BATCH_CONCURRENCY`, default 4); per-label isolation — one bad file becomes an error row, the batch continues; UI submits in sub-batches of 10 so the progress bar reflects real completion; CSV export of results | `tests/test_batch_api.py`, `tests/qa/test_qa3_batch_semantics.py` (cap-before-spend, isolation, exactly-300 admitted), `tests/test_e2e_batch_ui.py`, `tests/qa/test_qa3_e2e_batch.py` |
 | Marcus Williams: infrastructure on Azure (post-FedRAMP 2019 migration); "network restricts outbound traffic to many domains" | Must be deployable inside TTB's network | The Anthropic API is the app's only outbound dependency, isolated behind the `Extractor` protocol; containerized (see [On-prem path](#on-prem--firewall-path)); swapping the backend is a one-class change | `tests/conftest.py` — the entire offline suite runs the real app against a fake extractor with zero outbound traffic, which is the swap demonstrated |
 | Marcus Williams: avoid sensitive data storage; this is a proof-of-concept | No persistence (R8) | Uploads processed in memory and discarded; no database, no files written, no image data echoed back in responses; API key lives server-side in an env var only | `tests/qa/test_qa3_batch_semantics.py` (`test_qa3_no_upload_bytes_persist_after_batch`, `test_qa3_response_contains_no_image_data`) |
 | Marcus Williams: existing COLA system is .NET; integration NOT required | Standalone tool | No COLA coupling; the JSON API (`/api/verify`, `/api/verify-batch`) is the seam a future .NET integration would call | `tests/test_api.py` (stable response contract), `tests/qa/test_qa2_contract.py` |
 | Dave Morrison: "STONE'S THROW" vs "Stone's Throw" are functionally identical; label review requires judgment beyond pattern matching | Tolerant text matching with a human-review lane | Brand and class/type use case-insensitive, whitespace-normalized fuzzy matching (rapidfuzz `token_sort_ratio`: >= 90 match, 75-89 review, < 75 mismatch). The middle band routes genuine judgment calls to the agent instead of forcing a binary verdict | `tests/test_text_match.py` (trap 1 named test), `tests/test_e2e_ui.py` (happy path uses exactly this brand pair) |
-| Dave Morrison: the tool must accelerate the workflow without adding friction | Fewer clicks, explanations not codes | Single page, one Scan Labels button, per-field one-sentence explanations in the drill-down; the worksheet flags only the rows that need a human look (FAIL and REVIEW) and the score column says how many fields matched, so a clean batch is a column of green badges an agent can skim | `tests/test_ui.py`, `tests/test_e2e_batch_ui.py` |
+| Dave Morrison: the tool must accelerate the workflow without adding friction | Fewer clicks, explanations not codes | Single page, one Run button, per-field one-sentence explanations in the drill-down; the worksheet flags only the rows that need a human look (FAIL and REVIEW) and the score column says how many fields matched, so a clean batch is a column of green badges an agent can skim | `tests/test_ui.py`, `tests/test_e2e_batch_ui.py` |
 | Jenny Park: government warning requires exact match — word-for-word, all caps, bold | F7 strictness (27 CFR 16.21) | Whitespace/smart-quote normalization, then exact text comparison against the statutory text; "GOVERNMENT WARNING:" prefix checked for all caps on the case-preserved transcription (title case fails); on mismatch, a per-clause diff with word-level differences ("expected 'may' -> found 'might'"); bold is a best-effort vision self-report — "not bold" downgrades to review, never a silent pass or a hard fail (documented limitation) | `tests/test_warning.py` (traps 2-4), `tests/qa/test_qa_warning.py` (unicode whitespace, lowercase prefix), `tests/test_e2e_ui.py` (clause diff renders as prose) |
 | Jenny Park: handle imperfectly photographed labels (angles, lighting, glare) | Degrade to review, never a silent wrong verdict | The extractor flags uncertain fields; an uncertain reading of text that is present on the label has its match/mismatch verdict downgraded to ⚠️ needs review, while a confidently absent field keeps its decisive verdict (a missing-origin import still fails); the eval set includes angled and glare-degraded variants | `tests/test_engine.py` (trap 10), `eval/labels/15-bourbon-angled.png`, `eval/labels/16-bourbon-glare.png` with expected verdicts in `eval/manifest.json` |
 
@@ -65,9 +133,9 @@ payloads, no retry for permanent 4xx — is a small hand-written loop.
 **Deterministic rules, not LLM-as-judge.** Verdicts must be reproducible
 (same label, same answer, every time), auditable (an agent can read
 `app/rules/warning.py` and see exactly why title case fails), cheap (no second
-model call per field), and testable (the matchers carry 335 offline tests). A
+model call per field), and testable (the matchers carry 403 offline tests). A
 rule change is a reviewable code diff, not prompt drift. The rules engine and
-its callers are pinned by the 335-test offline suite. The model does the one
+its callers are pinned by the 403-test offline suite. The model does the one
 thing code cannot: read a photograph.
 
 **Extraction model choice.** `EXTRACTION_MODEL` (default `claude-sonnet-5`)
@@ -128,7 +196,7 @@ domains — is answered by a seam, not a rewrite:
   TTB's tenant means implementing that protocol against an Azure OpenAI
   vision deployment in the FedRAMP boundary, or a locally hosted vision
   model — one class, zero changes to the rules engine, API, or UI.
-- The offline test suite already proves the swap: 335 tests run the full app
+- The offline test suite already proves the swap: 403 tests run the full app
   against a substitute extractor with no outbound traffic at all.
 
 ## What this grows into
@@ -137,19 +205,17 @@ The assignment's own guidance was to prefer a working core over ambitious but
 incomplete features, so the following is designed but deliberately deferred —
 each is a bounded extension of seams that already exist, not a rewrite.
 
-**Three-layer verification.** Today's engine checks one pair: what the label
-prints against what the application declares. But the regulations make the
-required elements vary by beverage type — a malt beverage, a wine, and a
-distilled spirit do not owe the same statements — so the full check is a
-triangle with a scored delta on each edge: federal requirements for the
-product's class ↔ the intake-form declarations ↔ the vision extraction.
-That yields three distinct findings per submission: *completeness* (is every
-element required for this class present somewhere on the label set),
-*consistency* (printed vs declared — today's engine, unchanged), and *form
-compliance* (did the application itself declare everything its class
-requires). The rules engine already renders per-field verdicts from declared
-pairs; the extension is a per-class requirements table and two more
-comparison passes over data the pipeline already carries.
+**Three-layer verification.** Today's engine checks *consistency* (printed vs
+declared) and — since WP7 — a first cut of *completeness*: the per-family
+required-elements table above (three families, TTB-cited, REVIEW severity).
+The full check is still a triangle with a scored delta on each edge: federal
+requirements for the product's class ↔ the intake-form declarations ↔ the
+vision extraction. What remains deferred is the finer per-class requirements
+table (wine appellation-of-origin rules 4.23/4.27, sub-7%-ABV wines under FDA
+jurisdiction, standards of fill, ingredient disclosures such as sulfites and
+FD&C Yellow No. 5 per 7.63(b)) and the third finding, *form compliance* (did
+the application itself declare everything its class requires) — a table and
+one more comparison pass over data the pipeline already carries.
 
 **Many images per submission.** A real COLA application is a label *set* —
 front, back, and neck labels for one product. The next step groups uploaded
@@ -171,7 +237,7 @@ already goes through.
 
 ## Testing and verification
 
-335 tests pass offline in about 30 seconds (`pytest`), plus one key-gated live
+403 tests pass offline in about 35 seconds (`pytest`), plus one key-gated live
 test (`pytest -m live`). Levels:
 
 | Level | What | Where |

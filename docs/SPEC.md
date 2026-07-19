@@ -48,11 +48,18 @@ operate machinery, and may cause health problems."
   Large controls, drag-and-drop, plain language, no jargon, obvious buttons.
   Audience includes non-technical users age 50+.
   - Upload: a drag-and-drop zone accepting 1..N label photos (click-to-browse
-    kept) plus a clearly-labeled second slot for the submittal form — a CSV
-    with the batch-manifest columns (filename, brand, class_type, abv,
-    net_contents, producer, origin_country, is_import) — and one big
-    "Scan Labels" button. There is NO typed application-details form:
-    application data arrives only via the submittal CSV.
+    kept) plus a clearly-labeled second slot for the submittal form — in
+    whatever format the applicant sent (WP7): CSV/TSV/TXT, Excel (.xlsx),
+    PDF, or a photo of the form. Structured formats parse deterministically
+    (case-insensitive header aliases); PDF/photo forms are transcribed by an
+    LLM document-extraction call into the same batch-manifest rows (filename,
+    brand, class_type, abv, net_contents, producer, origin_country,
+    is_import) and previewed ("Show what was read") before any scan. Rows
+    naming a photo file match by file name; a form without file names matches
+    rows to photos by order when the counts are equal (persistent notice) and
+    blocks the scan with an explanation when they differ. The big "Run"
+    button sits inside the form step. There is NO typed application-details
+    form: application data arrives only via the submittal form.
   - Worksheet: one row per scanned label with a zero-padded serial number
     (001, 002, … in scan order), a per-row scan date-time stamp (local, 24h,
     client-derived when that label's result lands), a per-row Time column
@@ -63,11 +70,20 @@ operate machinery, and may cause health problems."
     PASS (green, every applicable field matches), FAIL (red, any mismatch),
     REVIEW (amber, worst issue is review-level). FAIL and REVIEW rows are
     flagged for human review — row tint + flag icon.
-  - No CSV provided: photos are still scanned and extracted columns filled,
-    but the submittal-checked columns and score read "No submittal data —
-    needs review" and the row is flagged — never a silent pass. A single
-    photo with no CSV must work (replaces the old single-label flow). The
-    statutory health-warning check (F7) still renders a real verdict.
+  - No submittal form provided: photos are still scanned and extracted
+    columns filled, but the submittal-checked columns and score read "No
+    submittal data — needs review" and the row is flagged — never a silent
+    pass. A single photo with no form must work (replaces the old
+    single-label flow). The statutory health-warning check (F7) still renders
+    a real verdict.
+  - Required-elements check (WP7, deterministic, zero extra model calls,
+    client-derived like score/pass-fail): per class family (malt / wine /
+    spirits, inferred from the declared-else-extracted class/type), the
+    label-mandatory elements — brand, class/type, net contents, producer,
+    health warning; ABV for wine and spirits — that were NOT found in the
+    photo flag the row at REVIEW level with a "may appear on another label or
+    be embossed on the container" reason (TTB citations in app/static/app.js
+    and APPROACH.md). Never downgrades a FAIL.
   - Review drill-down: clicking a flagged row or its Review button (a real
     <button>, keyboard-accessible) opens a detail panel: the label image
     large (client-side object URL — no server storage, preserves R8), the
