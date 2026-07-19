@@ -1,13 +1,18 @@
 # TTB Label Verify
 
 A proof-of-concept web tool for TTB label compliance review. An agent drops in
-label photos (one or hundreds) plus the submittal-form CSV; one Claude vision
-call per label transcribes it, and a deterministic rules engine compares the
-seven required fields (brand, class/type, alcohol content, net contents,
-producer, country of origin, government health warning). Every label becomes a
-row in a worksheet — serial number, timestamp, per-field verdict marks, a
-score, and a PASS / FAIL / REVIEW result — in a few seconds per label. Design
-rationale and requirements traceability are in [APPROACH.md](APPROACH.md).
+label photos (one or hundreds) plus the submittal form in whatever format the
+applicant sent (CSV, Excel, PDF, or a photo); one Claude vision call per label
+transcribes it, and a deterministic rules engine compares the seven required
+fields (brand, class/type, alcohol content, net contents, producer, country of
+origin, government health warning). Every label becomes a row in a worksheet —
+serial number, timestamp, per-field verdict marks, a score, and a
+PASS / FAIL / REVIEW result — in a few seconds per label. Design rationale and
+requirements traceability are in [APPROACH.md](APPROACH.md).
+
+**Live demo:** <https://ttb-label-verify-cqzj.onrender.com> — bring a label
+photo and a one-row submittal form (or a CSV like the example below) and press
+Run.
 
 ## Screenshots
 
