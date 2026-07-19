@@ -1,10 +1,11 @@
 """L2 — UI page and static asset serving (WP2, reshaped by WP5).
 
-Locks: GET / serves the unified worksheet UI (dropzone + submittal CSV slot +
-scan button + worksheet table), the page references its assets, the assets
-serve with sensible content types, and the UI redesign did not disturb the
-API routes. The old two-tab layout and the "enter application details" form
-are gone by design (WP5) — this file locks their absence.
+Locks: GET / serves the unified worksheet UI (photo dropzone + submittal CSV
+dropzone + scan button + worksheet table), the page references its assets, the
+assets serve with sensible content types, and the UI redesign did not disturb
+the API routes. The old two-tab layout and the "enter application details" form
+are gone by design (WP5) — this file locks their absence. Owner feedback:
+step 2 mirrors step 1 — a drag-and-drop zone, not a bare file input.
 """
 
 from __future__ import annotations
@@ -56,6 +57,23 @@ class TestIndexPage:
         html = client.get("/").text
         for column in ("Serial", "Scanned at", "Time", "Photo", "Brand name", "Health warning", "Score", "Result"):
             assert column in html, column
+
+    def test_submittal_form_step_is_a_dropzone_like_the_photos(self, client):
+        # Owner feedback: step 2 must have the same look and feel as step 1 —
+        # a dashed drag-and-drop zone with a big "choose from your computer"
+        # button, not a text-heavy block around a bare file input.
+        html = client.get("/").text
+        assert 'id="csv-dropzone"' in html
+        assert "Drag the submittal form here" in html
+        assert "Choose form from your computer" in html
+        # The hidden input keeps its id (source of truth for selection) and
+        # still accepts only CSV.
+        assert 'id="csv-input"' in html
+        assert 'accept=".csv,text/csv"' in html
+        # Selected state: status line + clear control live inside the zone.
+        assert 'id="csv-dropzone-selected"' in html
+        assert 'id="csv-status"' in html
+        assert 'id="csv-clear"' in html
 
     def test_blank_submittal_template_control_is_present(self, client):
         # Audit drift fix: with the typed form gone, non-technical users need

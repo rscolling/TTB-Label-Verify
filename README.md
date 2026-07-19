@@ -49,7 +49,8 @@ There is one flow, whether you have one label or three hundred:
 
 1. **Add the label photos.** Drag them into the drop zone or use the file
    picker — 1 to 300 photos per scan.
-2. **Add the submittal form (CSV).** One row per photo, matched by file name —
+2. **Add the submittal form (CSV).** Drag it into its own drop zone or use
+   "Choose form from your computer". One row per photo, matched by file name —
    the `filename` column must match the photo's name exactly. Click
    "Download a blank submittal form (CSV)" to get a correct starting point
    with the header row and an example row.

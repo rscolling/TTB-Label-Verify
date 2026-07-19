@@ -439,6 +439,104 @@ class TestCsvExport:
                 assert not cell.startswith(("=", "+", "@")), f"unguarded cell {cell!r}"
 
 
+def drop_on_csv_zone(page, files: list[dict]) -> None:
+    """Synthesize a drag-and-drop onto the step-2 CSV dropzone: build a real
+    DataTransfer with in-memory File objects and dispatch a drop event."""
+    page.evaluate(
+        """(files) => {
+            const dt = new DataTransfer();
+            for (const f of files) {
+                dt.items.add(new File([f.content], f.name, { type: f.type }));
+            }
+            document.getElementById('csv-dropzone').dispatchEvent(
+                new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true })
+            );
+        }""",
+        files,
+    )
+
+
+class TestCsvDropzoneDragDrop:
+    """Owner feedback: step 2 mirrors the photo dropzone. Dropping a single
+    .csv anywhere on the zone selects it (through the hidden #csv-input, which
+    stays the source of truth); anything else gets the friendly error callout
+    and selects nothing."""
+
+    def test_dropping_a_csv_selects_it_and_the_scan_uses_it(self, page, base_url):
+        page.goto(base_url + "/")
+        page.set_input_files("#file-input", files=memory_files(["a.png"]))
+        drop_on_csv_zone(page, [{
+            "name": "dropped-submittal.csv",
+            "type": "text/csv",
+            "content": matching_manifest(["a.png"]),
+        }])
+        playwright_api.expect(page.locator("#csv-status")).to_contain_text(
+            "dropped-submittal.csv"
+        )
+        playwright_api.expect(page.locator("#csv-dropzone-selected")).to_be_visible()
+        playwright_api.expect(page.locator("#error-callout")).to_be_hidden()
+        # The hidden input carries the dropped file — every set_input_files
+        # consumer and the submit path read from the same place.
+        assert page.evaluate(
+            "document.getElementById('csv-input').files[0].name"
+        ) == "dropped-submittal.csv"
+        # And the scan really checks against the dropped spreadsheet.
+        page.click("#scan-button")
+        playwright_api.expect(page.locator("#banner-text")).to_have_text(
+            "1 label scanned — 1 passed", timeout=15_000
+        )
+
+    def test_dropping_a_non_csv_shows_friendly_error_and_selects_nothing(
+        self, page, base_url
+    ):
+        page.goto(base_url + "/")
+        drop_on_csv_zone(page, [{
+            "name": "photo.png", "type": "image/png", "content": "not a csv",
+        }])
+        callout = page.locator("#error-callout")
+        playwright_api.expect(callout).to_be_visible()
+        playwright_api.expect(callout).to_contain_text("doesn't look like a CSV file")
+        playwright_api.expect(page.locator("#csv-dropzone-selected")).to_be_hidden()
+        assert page.evaluate("document.getElementById('csv-input').files.length") == 0
+
+    def test_dropping_multiple_files_is_rejected(self, page, base_url):
+        page.goto(base_url + "/")
+        drop_on_csv_zone(page, [
+            {"name": "one.csv", "type": "text/csv", "content": "filename,brand\n"},
+            {"name": "two.csv", "type": "text/csv", "content": "filename,brand\n"},
+        ])
+        playwright_api.expect(page.locator("#error-callout")).to_be_visible()
+        playwright_api.expect(page.locator("#csv-dropzone-selected")).to_be_hidden()
+        assert page.evaluate("document.getElementById('csv-input').files.length") == 0
+
+    def test_dropping_a_csv_replaces_the_previous_one(self, page, base_url):
+        page.goto(base_url + "/")
+        page.set_input_files(
+            "#csv-input", files=csv_payload("filename,brand\n", name="first.csv")
+        )
+        playwright_api.expect(page.locator("#csv-status")).to_contain_text("first.csv")
+        drop_on_csv_zone(page, [{
+            "name": "second.csv", "type": "text/csv", "content": "filename,brand\n",
+        }])
+        playwright_api.expect(page.locator("#csv-status")).to_contain_text("second.csv")
+        assert page.evaluate("document.getElementById('csv-input').files.length") == 1
+
+    def test_choose_button_is_a_real_button_and_opens_the_file_picker(
+        self, page, base_url
+    ):
+        page.goto(base_url + "/")
+        assert page.evaluate(
+            "document.querySelector('.csv-choose').tagName"
+        ) == "BUTTON"
+        with page.expect_file_chooser() as chooser_info:
+            page.click("text=Choose form from your computer")
+        chooser_info.value.set_files([{
+            "name": "picked.csv", "mimeType": "text/csv",
+            "buffer": b"filename,brand\n",
+        }])
+        playwright_api.expect(page.locator("#csv-status")).to_contain_text("picked.csv")
+
+
 class TestBlankSubmittalTemplate:
     """Audit drift fix: a client-side downloadable blank submittal form so a
     non-technical user never has to hand-author the 8-column CSV."""

@@ -73,6 +73,9 @@
   var dropzoneEmpty = document.getElementById("dropzone-empty");
   var dropzoneSelected = document.getElementById("dropzone-selected");
   var fileSummary = document.getElementById("file-summary");
+  var csvDropzone = document.getElementById("csv-dropzone");
+  var csvDropzoneEmpty = document.getElementById("csv-dropzone-empty");
+  var csvDropzoneSelected = document.getElementById("csv-dropzone-selected");
   var csvInput = document.getElementById("csv-input");
   var csvStatus = document.getElementById("csv-status");
   var csvClear = document.getElementById("csv-clear");
@@ -153,13 +156,13 @@
     fileInput.click();
   });
 
-  /* ---------- submittal CSV selection ---------- */
+  /* ---------- submittal CSV selection (a dropzone, sibling to step 1) ---------- */
 
   function syncCsv() {
     csvFile = (csvInput.files && csvInput.files.length > 0) ? csvInput.files[0] : null;
     var hasCsv = csvFile !== null;
-    csvStatus.hidden = !hasCsv;
-    csvClear.hidden = !hasCsv;
+    csvDropzoneEmpty.hidden = hasCsv;
+    csvDropzoneSelected.hidden = !hasCsv;
     if (hasCsv) {
       csvStatus.textContent = "Using “" + csvFile.name +
         "” — each photo will be checked against its row.";
@@ -178,6 +181,57 @@
     syncCsv();
   });
   syncCsv();
+
+  // Real, keyboard-operable buttons open the picker for the hidden input
+  // (both the empty-state and the "choose a different form" button).
+  Array.prototype.forEach.call(
+    document.querySelectorAll(".csv-choose"),
+    function (button) {
+      button.addEventListener("click", function () { csvInput.click(); });
+    }
+  );
+
+  ["dragenter", "dragover"].forEach(function (name) {
+    csvDropzone.addEventListener(name, function (event) {
+      event.preventDefault();
+      csvDropzone.classList.add("dragover");
+    });
+  });
+
+  ["dragleave", "drop"].forEach(function (name) {
+    csvDropzone.addEventListener(name, function (event) {
+      event.preventDefault();
+      csvDropzone.classList.remove("dragover");
+    });
+  });
+
+  function looksLikeCsv(file) {
+    return /\.csv$/i.test(file.name) || file.type === "text/csv";
+  }
+
+  csvDropzone.addEventListener("drop", function (event) {
+    var files = event.dataTransfer && event.dataTransfer.files;
+    if (!files || files.length === 0) { return; }
+    if (files.length > 1 || !looksLikeCsv(files[0])) {
+      showError("That doesn't look like a CSV file — the submittal form is one " +
+        ".csv file. Drop just the spreadsheet here, or use " +
+        "“Choose form from your computer”.");
+      return;
+    }
+    // The hidden input stays the source of truth: assign the dropped file to
+    // it, then run the same change path as the picker (replace semantics,
+    // worksheet clearing, status line).
+    csvInput.files = files;
+    syncCsv();
+    hideError();
+  });
+
+  // Clicking anywhere else in the CSV dropzone opens the picker (the buttons
+  // inside already have their own jobs; don't double-open).
+  csvDropzone.addEventListener("click", function (event) {
+    if (event.target.closest("button, label") || event.target === csvInput) { return; }
+    csvInput.click();
+  });
 
   /* ---------- status helpers ---------- */
 

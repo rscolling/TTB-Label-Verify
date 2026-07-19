@@ -127,15 +127,7 @@ main { padding-top: 2rem; }
 
 .file-name { margin: 0.6rem 0 0.9rem; font-weight: 600; word-break: break-all; }
 
-/* ---------- form fields (submittal CSV slot) ---------- */
-
-.field { margin-bottom: 0.5rem; }
-
-.field label {
-  display: block;
-  font-weight: 600;
-  margin-bottom: 0.25rem;
-}
+/* ---------- submittal CSV slot (a dropzone, sibling to the photo one) ---------- */
 
 .field-hint {
   margin: 0 0 0.35rem;
@@ -143,23 +135,13 @@ main { padding-top: 2rem; }
   font-size: 0.95rem;
 }
 
-#csv-input {
-  font: inherit;
-  font-size: 1rem;
-  margin-bottom: 0.5rem;
-}
+#csv-status { color: var(--accent-dark); }
 
-#csv-input:focus-visible {
-  outline: 3px solid var(--focus);
-  outline-offset: 1px;
-}
+/* Selected state: file summary above, the two buttons side by side. */
+#csv-dropzone-selected .button { margin: 0 0.3rem; }
 
-#csv-status { font-weight: 600; color: var(--accent-dark); }
-
-/* The blank-submittal-form download sits with the CSV slot, quietly. */
-.template-row { margin: 0.35rem 0; }
-
-#csv-clear { margin: 0.25rem 0 0.75rem; }
+/* The blank-submittal-form download sits under the CSV dropzone, quietly. */
+.template-row { margin: 0.9rem 0 0.35rem; }
 
 /* ---------- buttons ---------- */
 
@@ -202,7 +184,8 @@ main { padding-top: 2rem; }
   outline-offset: 2px;
 }
 
-.dropzone:has(#file-input:focus-visible) { outline: 3px solid var(--focus); outline-offset: 2px; }
+.dropzone:has(#file-input:focus-visible),
+.dropzone:has(#csv-input:focus-visible) { outline: 3px solid var(--focus); outline-offset: 2px; }
 
 .submit-row { text-align: center; margin: 1.75rem 0; }
 

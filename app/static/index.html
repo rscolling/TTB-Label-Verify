@@ -41,27 +41,33 @@
 
       <section class="card" aria-labelledby="csv-heading">
         <h2 id="csv-heading"><span class="step-num" aria-hidden="true">2</span> Add the submittal form (CSV)</h2>
-        <div class="field">
-          <label for="csv-input">Submittal spreadsheet — one row per photo</label>
-          <p class="field-hint" id="csv-hint">
-            A CSV file with these columns: filename, brand, class_type, abv, net_contents,
-            producer, origin_country, is_import. We match each row to a photo by its file name.
-          </p>
-          <p class="template-row">
-            <button type="button" id="template-download" class="button button-secondary">Download a blank submittal form (CSV)</button>
-          </p>
-          <p class="field-hint">
-            Fill one row per label photo &mdash; the filename must match the photo&rsquo;s name.
-          </p>
-          <input type="file" id="csv-input" accept=".csv,text/csv" aria-describedby="csv-hint">
-          <p id="csv-status" class="field-hint" hidden></p>
-          <button type="button" id="csv-clear" class="button button-secondary" hidden>Remove the spreadsheet</button>
-          <p class="field-hint">
-            No spreadsheet? We&rsquo;ll still scan the photos and fill in what we read,
-            but every row will be flagged for human review — there&rsquo;s nothing to
-            check the labels against.
-          </p>
+        <div id="csv-dropzone" class="dropzone">
+          <input type="file" id="csv-input" accept=".csv,text/csv" aria-describedby="csv-hint"
+                 class="visually-hidden">
+          <div id="csv-dropzone-empty">
+            <p class="dropzone-title">Drag the submittal form here</p>
+            <p class="dropzone-or">or</p>
+            <button type="button" class="button button-secondary csv-choose">Choose form from your computer</button>
+            <p class="dropzone-hint" id="csv-hint">
+              One CSV, one row per photo &mdash; columns: filename, brand, class_type,
+              abv, net_contents, producer, origin_country, is_import.
+            </p>
+          </div>
+          <div id="csv-dropzone-selected" hidden>
+            <p id="csv-status" class="file-name"></p>
+            <button type="button" class="button button-secondary csv-choose">Choose a different form</button>
+            <button type="button" id="csv-clear" class="button button-secondary">Remove the spreadsheet</button>
+          </div>
         </div>
+        <p class="template-row">
+          <button type="button" id="template-download" class="button button-secondary">Download a blank submittal form (CSV)</button>
+        </p>
+        <p class="field-hint">
+          Fill one row per label photo &mdash; the filename must match the photo&rsquo;s name.
+          No spreadsheet? We&rsquo;ll still scan the photos and fill in what we read,
+          but every row will be flagged for human review &mdash; there&rsquo;s nothing to
+          check the labels against.
+        </p>
       </section>
 
       <div class="submit-row">
