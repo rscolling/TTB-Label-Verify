@@ -36,15 +36,26 @@ class TestIndexPage:
 
     def test_page_has_the_core_controls(self, client):
         html = client.get("/").text
-        # Drag-and-drop photo upload (multi-file), the submittal CSV slot,
-        # one scan button, and the worksheet table.
+        # Drag-and-drop photo upload (multi-file), the submittal form slot,
+        # one Run button, and the worksheet table.
         assert 'id="file-input"' in html
         assert "multiple" in html
         assert 'id="csv-input"' in html
         assert 'id="scan-button"' in html
-        assert "Scan Labels" in html
+        assert ">Run</button>" in html
         assert 'id="worksheet"' in html
         assert 'id="worksheet-body"' in html
+
+    def test_run_button_lives_inside_the_form_card_not_below_the_cards(self, client):
+        # Owner direction (WP7): the Run button is THE action, placed inside
+        # the step-2 card directly below the form dropzone — no separate
+        # centered submit row competing with it.
+        html = client.get("/").text
+        assert 'class="submit-row"' not in html
+        assert "Scan Labels" not in html
+        card_two = html.split('id="csv-heading"')[1].split("</section>")[0]
+        assert 'id="scan-button"' in card_two
+        assert 'class="run-row"' in card_two
 
     def test_application_details_form_is_gone(self, client):
         # WP5: application data arrives ONLY via the submittal CSV — there is
@@ -67,20 +78,28 @@ class TestIndexPage:
         assert "Drag the submittal form here" in html
         assert "Choose form from your computer" in html
         # The hidden input keeps its id (source of truth for selection) and
-        # still accepts only CSV.
+        # now accepts every supported form format (WP7).
         assert 'id="csv-input"' in html
-        assert 'accept=".csv,text/csv"' in html
-        # Selected state: status line + clear control live inside the zone.
+        for accepted in (".csv", ".tsv", ".xlsx", ".pdf", ".png", ".jpg"):
+            assert accepted in html, accepted
+        # Selected state: status line, warnings, preview + clear control live
+        # inside the zone.
         assert 'id="csv-dropzone-selected"' in html
         assert 'id="csv-status"' in html
         assert 'id="csv-clear"' in html
+        assert 'id="form-warnings"' in html
+        assert 'id="ingest-preview"' in html
+        assert "Show what was read" in html
+        assert 'id="match-notice"' in html
 
     def test_submittal_hint_is_present(self, client):
-        # Plain-language guidance next to the CSV drop zone (the owner removed
-        # the blank-template download button; the hint stays).
+        # Plain-language guidance in the form drop zone (the owner removed
+        # the blank-template download button; the hint stays) — now naming
+        # every accepted format plus the order-matching rule.
         html = client.get("/").text
         assert 'id="template-download"' not in html
-        assert "must match the photo" in html
+        assert "CSV, Excel (.xlsx), PDF, or a photo of the form" in html
+        assert "matched to photos in order" in html
 
     def test_page_is_plain_language_no_jargon(self, client):
         # R5: visible text avoids jargon.

@@ -458,9 +458,9 @@ def drop_on_csv_zone(page, files: list[dict]) -> None:
 
 class TestCsvDropzoneDragDrop:
     """Owner feedback: step 2 mirrors the photo dropzone. Dropping a single
-    .csv anywhere on the zone selects it (through the hidden #csv-input, which
-    stays the source of truth); anything else gets the friendly error callout
-    and selects nothing."""
+    supported form file (CSV/TSV/XLSX/PDF/photo) anywhere on the zone selects
+    it (through the hidden #csv-input, which stays the source of truth);
+    anything else gets the friendly error callout and selects nothing."""
 
     def test_dropping_a_csv_selects_it_and_the_scan_uses_it(self, page, base_url):
         page.goto(base_url + "/")
@@ -486,16 +486,18 @@ class TestCsvDropzoneDragDrop:
             "1 label scanned — 1 passed", timeout=15_000
         )
 
-    def test_dropping_a_non_csv_shows_friendly_error_and_selects_nothing(
+    def test_dropping_an_unsupported_file_shows_friendly_error_and_selects_nothing(
         self, page, base_url
     ):
+        # PNG/JPG/PDF are valid FORM formats now (WP7) — an unsupported type
+        # like a video still gets the friendly callout and selects nothing.
         page.goto(base_url + "/")
         drop_on_csv_zone(page, [{
-            "name": "photo.png", "type": "image/png", "content": "not a csv",
+            "name": "walkthrough.mp4", "type": "video/mp4", "content": "not a form",
         }])
         callout = page.locator("#error-callout")
         playwright_api.expect(callout).to_be_visible()
-        playwright_api.expect(callout).to_contain_text("doesn't look like a CSV file")
+        playwright_api.expect(callout).to_contain_text("doesn't look like a submittal form")
         playwright_api.expect(page.locator("#csv-dropzone-selected")).to_be_hidden()
         assert page.evaluate("document.getElementById('csv-input').files.length") == 0
 

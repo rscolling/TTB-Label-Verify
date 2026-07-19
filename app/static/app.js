@@ -1,15 +1,23 @@
-/* TTB Label Checker — unified worksheet flow (WP5).
-   One flow: drop 1..N label photos + an optional submittal-form CSV, click
-   Scan Labels. The client chunks the photos through POST /api/verify-batch
-   (CHUNK_SIZE per request) so progress reflects real server completion, and
-   builds a worksheet: one row per label with a serial number, scan timestamp,
+/* TTB Label Checker — unified worksheet flow (WP5 + WP7 format-agnostic form).
+   One flow: drop 1..N label photos + an optional submittal form (CSV, TSV,
+   Excel, PDF, or a photo of the form), press Run. Non-CSV forms are read
+   through POST /api/ingest-form into normalized rows the agent can preview
+   BEFORE scanning; at submit those rows are serialized back to the canonical
+   CSV and ride the frozen /api/verify-batch `manifest` field, so the batch
+   contract is untouched. Plain CSVs keep the legacy raw-file path (the
+   server's manifest parser stays the authority).
+
+   The client chunks the photos through POST /api/verify-batch (CHUNK_SIZE per
+   request) so progress reflects real server completion, and builds a
+   worksheet: one row per label with a serial number, scan timestamp,
    thumbnail, the extracted value per field with a compact status mark, a
    score, and a PASS / FAIL / REVIEW result. FAIL and REVIEW rows are flagged
    for human review; clicking a row (or its Review button) opens a drill-down
    panel with the label photo large and the field-by-field comparison.
 
-   Serial numbers, timestamps, scores, and pass/fail are all CLIENT-derived
-   from the server's per-field verdicts — the API response shapes are frozen.
+   Serial numbers, timestamps, scores, pass/fail, and the required-elements
+   check are all CLIENT-derived from the server's per-field verdicts — the API
+   response shapes are frozen.
 
    SECURITY: every dynamic string (extracted values, file names, reasons,
    error messages) is rendered with textContent or set as an attribute string
@@ -46,7 +54,8 @@
     review: { icon: "⚠", text: "Needs review", cls: "mark-review" },
     mismatch: { icon: "✗", text: "Doesn't match", cls: "mark-mismatch" },
     na: { icon: "—", text: "Not checked", cls: "mark-na" },
-    nodata: { icon: "⚠", text: "No submittal data — needs review", cls: "mark-review" }
+    nodata: { icon: "⚠", text: "No submittal data — needs review", cls: "mark-review" },
+    required: { icon: "⚠", text: "Required element — not found in this photo", cls: "mark-review" }
   };
 
   var STATUSES = {
@@ -64,6 +73,105 @@
   var SUBMITTAL_FIELDS = [
     "brand", "class_type", "abv", "net_contents", "producer", "origin_country"
   ];
+
+  /* ---------- required-elements check (deterministic, zero model calls) ----
+
+     Grounded in TTB's mandatory-label-information guidance, per class family:
+       - Malt beverages: 27 CFR part 7 subpart E (brand 7.64, class/type 7.65,
+         producer name+address 7.66-7.68, net contents 7.70) + TTB G 2023-12.
+         Alcohol content is deliberately NOT required here: for malt beverages
+         it is mandatory only when the alcohol derives from added flavors or
+         other added non-beverage ingredients (27 CFR 7.63(a)(3)).
+       - Distilled spirits: 27 CFR 5.61 / 5.64 / 5.65 / 5.141 + TTB G 2021-2.
+         Alcohol content IS required (5.65), and 5.61 requires it in the same
+         field of vision as the brand and class/type — hence the specially
+         worded reason when the photo shows both but no alcohol content.
+       - Wine: 27 CFR 4.32-4.36 + TTB G 2019-8. Alcohol content required.
+         (Wines under 7% ABV fall under FDA labeling rules, and the
+         appellation-of-origin rules (4.23 / 4.27) are out of scope — both are
+         documented growth path, see APPROACH.md.)
+     Common to all: the statutory health warning (27 CFR part 16 / 16.21).
+     Origin is required only for imports (malt 27 CFR 7.69 — CBP rules); the
+     submittal's is_import flag drives that check deterministically
+     server-side (app/rules/origin.py renders MISMATCH for an import with no
+     origin statement), so the client adds nothing for it here.
+
+     SEVERITY: a required element not found in the photo flags the row at
+     REVIEW, not FAIL — net contents and the producer statement may be blown,
+     embossed, or molded into the container (7.70, 7.66-7.68), and the health
+     warning may sit on a front, back, or side label (27 CFR part 16), so a
+     single photo legitimately may not show them. A row that already FAILs on
+     a real mismatch stays FAIL (worst-issue logic unchanged). */
+
+  var REQUIRED_MISSING_TEXT =
+    "Not found in this photo — it may appear on another label or be embossed " +
+    "on the container. Verify before approving.";
+  var SPIRITS_ABV_FOV_TEXT =
+    "Distilled spirits must show alcohol content in the same field of vision " +
+    "as the brand and class (27 CFR 5.61) — not found in this photo. " +
+    "Verify before approving.";
+
+  var CORE_REQUIRED = [
+    { key: "brand", name: "Brand name" },
+    { key: "class_type", name: "Kind of drink" },
+    { key: "net_contents", name: "Amount in bottle" },
+    { key: "producer", name: "Producer" },
+    { key: "government_warning", name: "Health warning" }
+  ];
+  var ABV_REQUIRED = { key: "abv", name: "Alcohol content" };
+
+  /* Class-family inference from the declared (or, without a submittal, the
+     extracted) class/type. Keyword order matters: spirits before malt so
+     "Single Malt Whisky" reads as spirits, wine's "port" is boundary-matched
+     so "Porter" stays malt. Unknown/absent class -> the generic core set. */
+  var FAMILY_MATCHERS = [
+    { family: "spirits", re: /(^|[^a-z0-9])(whiskey|whisky|bourbon|rye|vodka|gin|rum|tequila|mezcal|brandy|cognac|liqueur|schnapps|spirits?)([^a-z0-9]|$)/ },
+    { family: "wine", re: /(^|[^a-z0-9])(wine|champagne|sparkling|vermouth|port|sherry|riesling|chardonnay|cabernet|zinfandel|merlot|rosé)([^a-z0-9]|$)/ },
+    { family: "malt", re: /(^|[^a-z0-9])(beer|ale|lager|stout|porter|ipa|pilsner|malt)([^a-z0-9]|$)/ }
+  ];
+
+  function classFamily(classTypeText) {
+    if (!classTypeText) { return null; }
+    var text = String(classTypeText).toLowerCase();
+    for (var i = 0; i < FAMILY_MATCHERS.length; i++) {
+      if (FAMILY_MATCHERS[i].re.test(text)) { return FAMILY_MATCHERS[i].family; }
+    }
+    return null;
+  }
+
+  function fieldValuePresent(entry, key) {
+    var field = entry.fields[key];
+    var value = field ? field.extracted : null;
+    return !(value === null || value === undefined || String(value).trim() === "");
+  }
+
+  /* -> [{key, name, reason}] for the required elements NOT found on the label
+     in this photo. Empty for error entries. */
+  function missingRequired(entry) {
+    if (entry.error) { return []; }
+    var classField = entry.fields.class_type || {};
+    var family = classFamily(classField.expected || classField.extracted);
+    var required = CORE_REQUIRED.slice();
+    if (family === "spirits" || family === "wine") { required.push(ABV_REQUIRED); }
+    var missing = [];
+    required.forEach(function (element) {
+      if (fieldValuePresent(entry, element.key)) { return; }
+      var reason = REQUIRED_MISSING_TEXT;
+      if (
+        family === "spirits" && element.key === "abv" &&
+        fieldValuePresent(entry, "brand") && fieldValuePresent(entry, "class_type")
+      ) {
+        reason = SPIRITS_ABV_FOV_TEXT;  // 27 CFR 5.61 field-of-vision rule
+      }
+      missing.push({ key: element.key, name: element.name, reason: reason });
+    });
+    return missing;
+  }
+
+  function isRequiredMissing(row, key) {
+    if (!row.requiredMissing) { return false; }
+    return row.requiredMissing.some(function (element) { return element.key === key; });
+  }
 
   /* ---------- elements ---------- */
 
@@ -92,6 +200,10 @@
   var timing = document.getElementById("timing");
   var worksheetBody = document.getElementById("worksheet-body");
   var downloadButton = document.getElementById("download-csv");
+  var formWarnings = document.getElementById("form-warnings");
+  var ingestPreview = document.getElementById("ingest-preview");
+  var ingestPreviewBody = document.getElementById("ingest-preview-table").querySelector("tbody");
+  var matchNotice = document.getElementById("match-notice");
 
   var selectedFiles = [];
   var csvFile = null;
@@ -155,20 +267,137 @@
     fileInput.click();
   });
 
-  /* ---------- submittal CSV selection (a dropzone, sibling to step 1) ---------- */
+  /* ---------- submittal form selection (a dropzone, sibling to step 1) ------
+     The form can be a CSV/TSV, an Excel sheet, a PDF, or a photo. Selecting
+     one immediately POSTs it to /api/ingest-form so the agent can eyeball the
+     parsed rows BEFORE scanning. Plain CSVs stay usable even if the preview
+     read fails — the raw file goes to the server at scan time, which remains
+     the authority on manifest errors. */
+
+  var ingestToken = 0;   // bump to invalidate any in-flight ingest response
+  var ingest = { status: "none", file: null, rows: null, sourceKind: null, warnings: [] };
+
+  var PREVIEW_ROW_CAP = 50;
+  var PREVIEW_COLUMNS = [
+    "filename", "brand", "class_type", "abv",
+    "net_contents", "producer", "origin_country", "is_import"
+  ];
+
+  function resetIngest() {
+    ingestToken += 1;
+    ingest = { status: "none", file: null, rows: null, sourceKind: null, warnings: [] };
+    formWarnings.textContent = "";
+    formWarnings.hidden = true;
+    ingestPreview.hidden = true;
+    ingestPreview.open = false;
+    ingestPreviewBody.textContent = "";
+    matchNotice.hidden = true;
+    matchNotice.textContent = "";
+  }
+
+  function renderIngestPreview(previewRows) {
+    ingestPreviewBody.textContent = "";
+    previewRows.slice(0, PREVIEW_ROW_CAP).forEach(function (row, index) {
+      var tr = document.createElement("tr");
+      var num = document.createElement("td");
+      num.textContent = String(index + 1);
+      tr.appendChild(num);
+      PREVIEW_COLUMNS.forEach(function (key) {
+        var td = document.createElement("td");
+        var value = key === "is_import" ? (row.is_import ? "yes" : "no") : row[key];
+        // LLM-parsed rows are hostile until proven otherwise: textContent only.
+        td.textContent = (value === null || value === undefined || value === "")
+          ? "—" : String(value);
+        tr.appendChild(td);
+      });
+      ingestPreviewBody.appendChild(tr);
+    });
+    if (previewRows.length > PREVIEW_ROW_CAP) {
+      var more = document.createElement("tr");
+      var td = document.createElement("td");
+      td.colSpan = PREVIEW_COLUMNS.length + 1;
+      td.textContent = "…and " + (previewRows.length - PREVIEW_ROW_CAP) + " more rows.";
+      more.appendChild(td);
+      ingestPreviewBody.appendChild(more);
+    }
+  }
+
+  function ingestReady(file, body) {
+    ingest = {
+      status: "ready", file: file, rows: body.rows,
+      sourceKind: body.source_kind, warnings: body.warnings || []
+    };
+    csvStatus.textContent = "Read " + body.rows.length +
+      (body.rows.length === 1 ? " row" : " rows") + " from “" + file.name + "”.";
+    formWarnings.textContent = "";
+    ingest.warnings.forEach(function (warning) {
+      var item = document.createElement("li");
+      item.textContent = warning;
+      formWarnings.appendChild(item);
+    });
+    formWarnings.hidden = ingest.warnings.length === 0;
+    renderIngestPreview(body.rows);
+    ingestPreview.hidden = false;
+  }
+
+  function ingestFailed(file, message) {
+    if (looksLikeCsv(file)) {
+      // CSVs keep working exactly as before: the raw file is sent at scan
+      // time and the server's manifest parser reports any problem then.
+      ingest = { status: "failed", file: file, rows: null, sourceKind: null, warnings: [] };
+      csvStatus.textContent = "Using “" + file.name +
+        "” — each photo will be checked against its row.";
+      return;
+    }
+    // Non-CSV forms can't be scanned without a successful read: friendly
+    // callout, nothing left selected.
+    csvInput.value = "";
+    syncCsv();
+    showError(message);
+  }
+
+  function startIngest(file) {
+    var token = ++ingestToken;
+    ingest = { status: "loading", file: file, rows: null, sourceKind: null, warnings: [] };
+    var formData = new FormData();
+    formData.append("file", file, file.name);
+    fetch("/api/ingest-form", { method: "POST", body: formData })
+      .then(function (response) {
+        return response.json().catch(function () { return null; }).then(function (body) {
+          if (token !== ingestToken) { return; }  // a newer selection won
+          if (!response.ok || !body || !body.rows) {
+            var message = (body && body.error && body.error.message) ||
+              "We couldn't read that form. Please try again.";
+            ingestFailed(file, message);
+            return;
+          }
+          ingestReady(file, body);
+        });
+      })
+      .catch(function () {
+        if (token !== ingestToken) { return; }
+        ingestFailed(file,
+          "We couldn't reach the form reading service. Check the connection and re-add the form.");
+      });
+  }
 
   function syncCsv() {
     csvFile = (csvInput.files && csvInput.files.length > 0) ? csvInput.files[0] : null;
     var hasCsv = csvFile !== null;
     csvDropzoneEmpty.hidden = hasCsv;
     csvDropzoneSelected.hidden = !hasCsv;
+    resetIngest();
     if (hasCsv) {
-      csvStatus.textContent = "Using “" + csvFile.name +
-        "” — each photo will be checked against its row.";
+      // Synchronous status line first; the async ingest below refines it to
+      // "Read N rows from …" once the parse lands.
+      csvStatus.textContent = looksLikeCsv(csvFile)
+        ? "Using “" + csvFile.name + "” — each photo will be checked against its row."
+        : "Reading “" + csvFile.name + "”…";
+      startIngest(csvFile);
     }
-    // Results on screen were scored against the previous spreadsheet — clear
-    // them, same rule as choosing new photos. Mid-scan the worksheet is left
-    // alone: the running scan uses the CSV snapshotted at submit.
+    // Results on screen were scored against the previous form — clear them,
+    // same rule as choosing new photos. Mid-scan the worksheet is left
+    // alone: the running scan uses the rows/file snapshotted at submit.
     if (!scanning) {
       clearWorksheet();
     }
@@ -208,12 +437,18 @@
     return /\.csv$/i.test(file.name) || file.type === "text/csv";
   }
 
+  function looksLikeForm(file) {
+    return /\.(csv|tsv|txt|xlsx|pdf|png|jpe?g|webp)$/i.test(file.name) ||
+      file.type === "text/csv" || file.type === "application/pdf" ||
+      /^image\//.test(file.type);
+  }
+
   csvDropzone.addEventListener("drop", function (event) {
     var files = event.dataTransfer && event.dataTransfer.files;
     if (!files || files.length === 0) { return; }
-    if (files.length > 1 || !looksLikeCsv(files[0])) {
-      showError("That doesn't look like a CSV file — the submittal form is one " +
-        ".csv file. Drop just the spreadsheet here, or use " +
+    if (files.length > 1 || !looksLikeForm(files[0])) {
+      showError("That doesn't look like a submittal form — drop one CSV, Excel " +
+        "(.xlsx), PDF, or photo of the form here, or use " +
         "“Choose form from your computer”.");
       return;
     }
@@ -225,10 +460,11 @@
     hideError();
   });
 
-  // Clicking anywhere else in the CSV dropzone opens the picker (the buttons
-  // inside already have their own jobs; don't double-open).
+  // Clicking anywhere else in the form dropzone opens the picker (the buttons
+  // inside already have their own jobs, and the warnings list + "Show what
+  // was read" preview are their own interactive surfaces; don't double-open).
   csvDropzone.addEventListener("click", function (event) {
-    if (event.target.closest("button, label") || event.target === csvInput) { return; }
+    if (event.target.closest("button, label, details, ul") || event.target === csvInput) { return; }
     csvInput.click();
   });
 
@@ -250,7 +486,7 @@
   function setBusy(busy) {
     scanning = busy;
     scanButton.disabled = busy;
-    scanButton.textContent = busy ? "Scanning…" : "Scan Labels";
+    scanButton.textContent = busy ? "Running…" : "Run";
   }
 
   function updateProgress(done, total) {
@@ -304,24 +540,35 @@
 
   function markFor(row, key) {
     if (!row.hasSubmittal && SUBMITTAL_FIELDS.indexOf(key) !== -1) {
-      return MARKS.nodata;
+      return isRequiredMissing(row, key) ? MARKS.required : MARKS.nodata;
     }
     var field = row.entry.fields[key];
-    return (field && MARKS[field.verdict]) || MARKS.review;
+    var mark = (field && MARKS[field.verdict]) || MARKS.review;
+    // A required element the submittal didn't ask about ("Not checked") still
+    // has to be printed on the label — surface the miss instead of a dash.
+    // A real comparison verdict (match/mismatch/review) is more informative
+    // and keeps precedence.
+    if (mark === MARKS.na && isRequiredMissing(row, key)) { return MARKS.required; }
+    return mark;
   }
 
   /* Score + pass/fail for one row.
      - error entry            -> ERROR (flagged)
-     - with CSV: any mismatch -> FAIL; any review -> REVIEW; else PASS,
+     - with a form: any mismatch -> FAIL; any review -> REVIEW; else PASS,
        score = matches / applicable (applicable = verdict !== "na")
-     - without CSV: never a silent pass — the six submittal-checked fields
+     - without a form: never a silent pass — the six submittal-checked fields
        have nothing to compare against, so the row is at best REVIEW; the
        statutory health-warning check still runs, so a warning mismatch
-       still makes the row FAIL. */
+       still makes the row FAIL.
+     - a required label element not found in the photo flags the row at
+       REVIEW level (it may sit on another label of the set or be embossed on
+       the container — see the required-elements block above); it never
+       downgrades an existing FAIL and never upgrades one to FAIL. */
   function computeOutcome(row) {
     if (row.entry.error) {
       return { status: "error", scoreText: "—" };
     }
+    var requiredMiss = (row.requiredMissing || []).length > 0;
     if (!row.hasSubmittal) {
       var warning = row.entry.fields.government_warning;
       var status = warning && warning.verdict === "mismatch" ? "fail" : "review";
@@ -338,6 +585,7 @@
       if (field.verdict === "mismatch") { worst = "fail"; }
       else if (field.verdict === "review" && worst !== "fail") { worst = "review"; }
     });
+    if (requiredMiss && worst === "pass") { worst = "review"; }
     return {
       status: worst,
       scoreText: matches + "/" + applicable + " fields match"
@@ -604,6 +852,24 @@
     return table;
   }
 
+  /* "Required on every label" mini-section: the required elements the scan
+     did not find in this photo, each with its (TTB-grounded) reason. */
+  function requiredMissingBlock(row) {
+    var block = document.createElement("div");
+    block.className = "required-missing";
+    var heading = document.createElement("h4");
+    heading.textContent = "Required on every label";
+    block.appendChild(heading);
+    var list = document.createElement("ul");
+    row.requiredMissing.forEach(function (element) {
+      var item = document.createElement("li");
+      item.textContent = element.name + " — " + element.reason;
+      list.appendChild(item);
+    });
+    block.appendChild(list);
+    return block;
+  }
+
   function buildDetailPanel(row) {
     var panel = document.createElement("div");
     panel.className = "detail-panel";
@@ -653,6 +919,9 @@
       body.appendChild(callout);
     } else {
       body.appendChild(comparisonTable(row));
+      if (row.requiredMissing && row.requiredMissing.length > 0) {
+        body.appendChild(requiredMissingBlock(row));
+      }
     }
     layout.appendChild(body);
     panel.appendChild(layout);
@@ -749,10 +1018,21 @@
         csvScore(row)
       ];
       FIELD_ORDER.forEach(function (key) {
+        // Required-elements misses ride the EXISTING verdict/reason columns
+        // (the export column set is contract-locked): a field with no
+        // submittal comparison exports verdict "missing_required"; a field
+        // that also has a server verdict keeps it and appends the reason.
         var field = row.entry.fields && row.entry.fields[key];
+        var requiredMiss = field && isRequiredMissing(row, key);
+        var element = requiredMiss
+          ? row.requiredMissing.filter(function (e) { return e.key === key; })[0]
+          : null;
         if (field && !row.hasSubmittal && SUBMITTAL_FIELDS.indexOf(key) !== -1) {
-          cells.push("no_submittal_data");
-          cells.push(NO_DATA_TEXT + ".");
+          cells.push(requiredMiss ? "missing_required" : "no_submittal_data");
+          cells.push(requiredMiss ? element.reason : NO_DATA_TEXT + ".");
+        } else if (field && requiredMiss) {
+          cells.push(field.verdict === "na" ? "missing_required" : field.verdict);
+          cells.push(field.reason ? field.reason + " " + element.reason : element.reason);
         } else {
           cells.push(field ? field.verdict : "");
           cells.push(field ? field.reason : "");
@@ -780,21 +1060,23 @@
     downloadCsvText(buildCsv(rows), "label-scan-worksheet.csv");
   });
 
-  /* ---------- submit: chunked requests for real progress ---------- */
+  /* ---------- submit: matching plan + chunked requests for real progress ---- */
 
-  function sendChunk(chunk, submittalCsv) {
+  function sendChunk(chunk, manifestSource) {
     var formData = new FormData();
     chunk.forEach(function (file) { formData.append("files", file, file.name); });
-    if (submittalCsv) {
-      // The server ignores manifest rows for files not in this chunk, so the
-      // full spreadsheet can ride along with every sub-batch.
-      formData.append("manifest", submittalCsv, submittalCsv.name);
+    if (manifestSource) {
+      // manifestSource is the raw CSV File, or a Blob serialized from the
+      // ingested rows. The server ignores manifest rows for files not in this
+      // chunk, so the full form can ride along with every sub-batch.
+      formData.append("manifest", manifestSource, manifestSource.name || "ingested-form.csv");
     } else {
-      // No submittal form. The endpoint requires a brand to compare against,
-      // so send a placeholder — the server still extracts every field, and
-      // the client DISCARDS all submittal-dependent verdicts for these rows,
-      // rendering "No submittal data — needs review" instead (never a
-      // silent pass). Only the statutory health-warning verdict is kept.
+      // No submittal data for these photos. The endpoint requires a brand to
+      // compare against, so send a placeholder — the server still extracts
+      // every field, and the client DISCARDS all submittal-dependent verdicts
+      // for these rows, rendering "No submittal data — needs review" instead
+      // (never a silent pass). Only the statutory health-warning verdict and
+      // the required-elements check are kept.
       formData.append("brand", "-");
     }
     return fetch("/api/verify-batch", { method: "POST", body: formData })
@@ -808,6 +1090,151 @@
           return body.results;
         });
       });
+  }
+
+  /* ---------- matching: form rows -> photos (client-side, deterministic) ----
+     Rules, in order:
+       1. Rows that name a photo file match by (normalized) file name — the
+          existing server behavior, untouched.
+       2. If NO row names a file: equal counts -> pair rows to photos in
+          selection order (with a persistent notice); unequal counts -> block
+          the scan with an explanation (never a silent mispairing).
+       3. Mixed: named rows match by name; the leftover rows pair with the
+          leftover photos by order only when the counts make it unambiguous,
+          otherwise the unnamed rows are set aside with a notice and the
+          unmatched photos scan without submittal data (flagged rows). */
+
+  var MANIFEST_COLUMNS = [
+    "filename", "brand", "class_type", "abv",
+    "net_contents", "producer", "origin_country", "is_import"
+  ];
+
+  function csvFieldQuote(value) {
+    var text = value === null || value === undefined ? "" : String(value);
+    return '"' + text.replace(/"/g, '""') + '"';
+  }
+
+  function serializeManifest(manifestRows) {
+    var lines = [MANIFEST_COLUMNS.join(",")];
+    manifestRows.forEach(function (row) {
+      lines.push(MANIFEST_COLUMNS.map(function (key) {
+        if (key === "is_import") { return row.is_import ? "true" : "false"; }
+        return csvFieldQuote(row[key]);
+      }).join(","));
+    });
+    return lines.join("\r\n") + "\r\n";
+  }
+
+  function normalizeName(name) {  // mirror of the server's normalize_filename
+    return String(name || "").trim().replace(/\\/g, "/").split("/").pop().toLowerCase();
+  }
+
+  function plural(count, word) {
+    return count + " " + word + (count === 1 ? "" : "s");
+  }
+
+  /* Decide how the photos and the (already-ingested) form rows pair up.
+     Returns { error: message } to block the scan, or
+     { partitions: [{files, manifest: File|Blob|null, hasSubmittal}], notice }. */
+  function buildScanPlan(files, formFile) {
+    if (!formFile) {
+      return { partitions: [{ files: files, manifest: null, hasSubmittal: false }], notice: null };
+    }
+    var haveRows = ingest.status === "ready" && ingest.file === formFile && ingest.rows;
+    var planRows = haveRows ? ingest.rows : null;
+
+    if (looksLikeCsv(formFile)) {
+      // Raw-CSV path whenever possible — the server's manifest parser stays
+      // the authority (and the QA-locked semantics stay byte-identical). Only
+      // a CSV whose rows lack file names needs the serialized path below.
+      if (!haveRows || planRows.every(function (row) { return !!row.filename; })) {
+        return { partitions: [{ files: files, manifest: formFile, hasSubmittal: true }], notice: null };
+      }
+    } else if (ingest.status === "loading" && ingest.file === formFile) {
+      return { error: "Still reading the submittal form — give it a second, then press Run again." };
+    } else if (!haveRows) {
+      return { error: "We couldn't read that submittal form. Re-add it, or export it as CSV and try again." };
+    }
+
+    // Serialized path: snapshot the INGESTED ROWS now — swapping or removing
+    // the form mid-scan must not change what later chunks are checked against.
+    planRows = planRows.map(function (row) { return Object.assign({}, row); });
+
+    for (var r = 0; r < planRows.length; r++) {
+      if (!planRows[r].brand || !String(planRows[r].brand).trim()) {
+        return {
+          error: "Row " + (r + 1) + " of the form has no brand name — every " +
+            "application needs one. Fix the form and add it again."
+        };
+      }
+    }
+
+    var named = planRows.filter(function (row) { return !!row.filename; });
+    var unnamed = planRows.filter(function (row) { return !row.filename; });
+    var notice = null;
+    var noSubmittalPhotos = [];
+
+    var claimed = {};
+    named.forEach(function (row) { claimed[normalizeName(row.filename)] = true; });
+    var leftoverPhotos = files.filter(function (file) {
+      return !claimed[normalizeName(file.name)];
+    });
+
+    if (unnamed.length > 0) {
+      if (named.length === 0 && planRows.length !== files.length) {
+        return {
+          error: "The form has " + plural(planRows.length, "row") + " and you added " +
+            plural(files.length, "photo") + ", but the form doesn't say which photo " +
+            "each row belongs to. Add a filename column to the form, or make the " +
+            "row and photo counts match."
+        };
+      }
+      if (unnamed.length === leftoverPhotos.length) {
+        // Unambiguous: pair the unnamed rows with the unclaimed photos in
+        // selection order — but only if every pairing target is distinct.
+        var seen = {};
+        for (var p = 0; p < leftoverPhotos.length; p++) {
+          var key = normalizeName(leftoverPhotos[p].name);
+          if (seen[key]) {
+            return {
+              error: "Two of your photos share the file name “" + leftoverPhotos[p].name +
+                "” — rename one so each form row can be matched to the right photo."
+            };
+          }
+          seen[key] = true;
+        }
+        unnamed.forEach(function (row, index) {
+          row.filename = leftoverPhotos[index].name;
+          claimed[normalizeName(row.filename)] = true;
+        });
+        notice = "Matched " + plural(unnamed.length, "row") + " to " +
+          plural(unnamed.length, "photo") + " by order — check the pairings in the worksheet.";
+        leftoverPhotos = [];
+      } else {
+        // Ambiguous: set the unnamed rows aside; the unclaimed photos scan
+        // without submittal data (flagged rows — never a silent mispairing).
+        planRows = named;
+        noSubmittalPhotos = leftoverPhotos;
+        notice = plural(unnamed.length, "form row") + " couldn't be matched to a " +
+          "photo — the unmatched photos were scanned without submittal data.";
+      }
+    }
+
+    var matchedFiles = files;
+    if (noSubmittalPhotos.length > 0) {
+      matchedFiles = files.filter(function (file) { return claimed[normalizeName(file.name)]; });
+    }
+    // Photos the form doesn't mention still ride with the manifest — the
+    // server gives them the standard "no row for this photo" error entry.
+    var manifestBlob = new Blob([serializeManifest(planRows)], { type: "text/csv" });
+    var partitions = [];
+    if (matchedFiles.length > 0) {
+      partitions.push({ files: matchedFiles, manifest: manifestBlob, hasSubmittal: true });
+    }
+    if (noSubmittalPhotos.length > 0) {
+      partitions.push({ files: noSubmittalPhotos, manifest: null, hasSubmittal: false });
+    }
+    return { partitions: partitions, notice: notice };
   }
 
   form.addEventListener("submit", function (event) {
@@ -825,15 +1252,28 @@
     }
 
     var files = selectedFiles.slice();
-    // Snapshot the submittal CSV now: removing or swapping the spreadsheet
-    // mid-scan must not change what later chunks are checked against.
-    var submittalCsv = csvFile;
-    var hasSubmittal = submittalCsv !== null;
-    var total = files.length;
-    var chunks = [];
-    for (var i = 0; i < total; i += CHUNK_SIZE) {
-      chunks.push(files.slice(i, i + CHUNK_SIZE));
+    // The plan snapshots the form state now (the ingested ROWS, or the raw
+    // CSV File): removing or swapping the form mid-scan must not change what
+    // later chunks are checked against.
+    var plan = buildScanPlan(files, csvFile);
+    if (plan.error) {
+      showError(plan.error);
+      return;
     }
+    matchNotice.textContent = plan.notice || "";
+    matchNotice.hidden = !plan.notice;
+
+    var total = files.length;
+    var jobs = [];  // one entry per sub-batch: { chunk, manifest, hasSubmittal }
+    plan.partitions.forEach(function (partition) {
+      for (var i = 0; i < partition.files.length; i += CHUNK_SIZE) {
+        jobs.push({
+          chunk: partition.files.slice(i, i + CHUNK_SIZE),
+          manifest: partition.manifest,
+          hasSubmittal: partition.hasSubmittal
+        });
+      }
+    });
 
     clearWorksheet();
     setBusy(true);
@@ -842,7 +1282,7 @@
     var startedAt = Date.now();
     var nextSerial = 1;
 
-    function addRow(file, entry) {
+    function addRow(file, entry, hasSubmittal) {
       var row = {
         serial: pad3(nextSerial++),
         filename: file.name,
@@ -852,6 +1292,7 @@
         hasSubmittal: hasSubmittal,
         entry: entry
       };
+      row.requiredMissing = missingRequired(entry);
       var outcome = computeOutcome(row);
       row.status = outcome.status;
       row.scoreText = outcome.scoreText;
@@ -860,14 +1301,14 @@
     }
 
     var sequence = Promise.resolve();
-    chunks.forEach(function (chunk) {
+    jobs.forEach(function (job) {
       sequence = sequence.then(function () {
-        return sendChunk(chunk, submittalCsv).catch(function (error) {
+        return sendChunk(job.chunk, job.manifest).catch(function (error) {
           // A failed sub-batch becomes error rows; the scan continues.
           var message = error instanceof TypeError
             ? "We couldn't reach the scanning service for these photos."
             : error.message;
-          return chunk.map(function (file) {
+          return job.chunk.map(function (file) {
             return { filename: file.name, error: { code: "request_failed", message: message } };
           });
         }).then(function (chunkResults) {
@@ -875,7 +1316,7 @@
           // File objects by index so thumbnails stay attached to the right
           // row even with duplicate file names.
           chunkResults.forEach(function (entry, index) {
-            addRow(chunk[index] || { name: entry.filename }, entry);
+            addRow(job.chunk[index] || { name: entry.filename }, entry, job.hasSubmittal);
           });
           updateProgress(rows.length, total);
           resultsSection.hidden = false;
