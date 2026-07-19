@@ -380,6 +380,77 @@ main { padding-top: 2rem; }
 
 .worksheet-hint { margin: 0; color: var(--ink-soft); font-size: 0.95rem; }
 
+.filter-group { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+
+.filter-button.is-active {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* Approve / Deny controls in the review drill-down. */
+.decision-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin: 0 0 1rem;
+}
+
+.decision-note { margin: 0; font-weight: 600; }
+
+.decision-comment-label {
+  display: block;
+  margin: 0.6rem 0 1rem;
+  font-weight: 600;
+}
+
+.decision-comment {
+  display: block;
+  width: 100%;
+  max-width: 44rem;
+  margin-top: 0.3rem;
+  padding: 0.45rem 0.6rem;
+  font: inherit;
+  font-weight: 400;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.decision-comment:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 1px;
+}
+
+/* Per-field Confirm / Update checks in the drill-down table. */
+.check-cell { min-width: 12rem; }
+
+.check-option {
+  display: block;
+  font-size: 0.95rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.check-input {
+  width: 100%;
+  margin-top: 0.3rem;
+  padding: 0.3rem 0.5rem;
+  font: inherit;
+  font-size: 0.95rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.check-input:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.decision-approve { border-color: var(--good-border); color: var(--good-ink); }
+.decision-approve:hover { background: var(--good-bg); }
+.decision-deny { border-color: var(--bad-border); color: var(--bad-ink); }
+.decision-deny:hover { background: var(--bad-bg); }
+
 .table-scroll { overflow-x: auto; }
 
 #worksheet {

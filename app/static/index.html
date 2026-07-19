@@ -128,6 +128,12 @@
       <div class="worksheet-toolbar">
         <p class="worksheet-hint">Rows marked <span class="flag" aria-hidden="true">⚑</span> need a human look —
           click a row (or its Review button) to see the photo and what didn&rsquo;t line up.</p>
+        <div id="filter-group" class="filter-group" role="group" aria-label="Filter the worksheet rows">
+          <button type="button" class="button button-secondary filter-button is-active" data-filter="all" aria-pressed="true">All</button>
+          <button type="button" class="button button-secondary filter-button" data-filter="passed" aria-pressed="false">Passed</button>
+          <button type="button" class="button button-secondary filter-button" data-filter="failed" aria-pressed="false">Failed</button>
+          <button type="button" class="button button-secondary filter-button" data-filter="review" aria-pressed="false">Needs review</button>
+        </div>
         <button type="button" id="download-csv" class="button button-secondary">Download results (CSV)</button>
       </div>
       <div class="table-scroll">

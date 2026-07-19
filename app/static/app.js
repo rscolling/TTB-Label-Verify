@@ -64,8 +64,18 @@
     review: { badge: "REVIEW", cls: "status-review", flagged: true },
     error: { badge: "ERROR", cls: "status-error", flagged: true },
     // Form row with no uploaded photo (fewer images than submittal items).
-    missing: { badge: "MISSING", cls: "status-missing", flagged: true }
+    missing: { badge: "MISSING", cls: "status-missing", flagged: true },
+    // Human reviewer decisions (client-only; the scan verdict stays in row.status).
+    approved: { badge: "APPROVED", cls: "status-pass", flagged: false },
+    denied: { badge: "DENIED", cls: "status-fail", flagged: false }
   };
+
+  /* The status a row displays: the reviewer's decision wins over the scan. */
+  function effectiveStatus(row) {
+    if (row.review === "approved") { return "approved"; }
+    if (row.review === "denied") { return "denied"; }
+    return row.status;
+  }
 
   var NO_DATA_TEXT = "No submittal data — needs review";
 
@@ -231,6 +241,42 @@
   var rows = [];          // one record per scanned label, in serial order
   var openDetail = null;  // { row, detailTr, button } — at most one open panel
 
+  /* ---------- worksheet filter (client-only, over effective status) ---------- */
+
+  var filterGroup = document.getElementById("filter-group");
+  var FILTER_BUCKETS = {
+    passed: { pass: true, approved: true },
+    failed: { fail: true, denied: true },
+    review: { review: true, error: true, missing: true }
+  };
+  var activeFilter = "all";
+
+  function applyFilter() {
+    var bucket = FILTER_BUCKETS[activeFilter];
+    rows.forEach(function (row) {
+      row.tr.hidden = !!(bucket && !bucket[effectiveStatus(row)]);
+    });
+    if (openDetail && openDetail.row.tr.hidden) { closeDetailPanel(false); }
+  }
+
+  function setFilter(name) {
+    activeFilter = name;
+    Array.prototype.forEach.call(
+      filterGroup.querySelectorAll("button[data-filter]"),
+      function (button) {
+        var on = button.getAttribute("data-filter") === name;
+        button.classList.toggle("is-active", on);
+        button.setAttribute("aria-pressed", String(on));
+      }
+    );
+    applyFilter();
+  }
+
+  filterGroup.addEventListener("click", function (event) {
+    var button = event.target.closest("button[data-filter]");
+    if (button) { setFilter(button.getAttribute("data-filter")); }
+  });
+
   /* ---------- file selection ---------- */
 
   function clearWorksheet() {
@@ -241,6 +287,7 @@
     rows = [];
     worksheetBody.textContent = "";
     resultsSection.hidden = true;
+    setFilter("all");
     // Leaving review mode (WP8): whatever cleared the worksheet, the upload
     // form is the page again.
     recapBar.hidden = true;
@@ -695,14 +742,28 @@
     badge.className = "status-badge " + status.cls;
     badge.textContent = status.badge;
     td.appendChild(badge);
-    if (status.flagged) {
-      var sr = document.createElement("span");
-      sr.className = "visually-hidden";
-      sr.textContent = " — flagged for human review";
-      td.appendChild(sr);
-    }
+    row.badgeEl = badge;
+    var sr = document.createElement("span");
+    sr.className = "visually-hidden";
+    sr.textContent = status.flagged ? " — flagged for human review" : "";
+    td.appendChild(sr);
+    row.flagSrEl = sr;
     td.appendChild(reviewButton);
     return td;
+  }
+
+  /* Re-render one row's status after a reviewer decision (badge, row tint,
+     flag, screen-reader text), then re-apply the active filter and banner. */
+  function refreshRowStatus(row) {
+    var key = effectiveStatus(row);
+    var status = STATUSES[key];
+    row.badgeEl.className = "status-badge " + status.cls;
+    row.badgeEl.textContent = status.badge;
+    row.tr.className = "worksheet-row" + (status.flagged ? " row-" + key : "");
+    row.flagSrEl.textContent = status.flagged ? " — flagged for human review" : "";
+    if (row.flagEl) { row.flagEl.hidden = !status.flagged; }
+    applyFilter();
+    renderBanner();
   }
 
   function appendRow(row) {
@@ -785,7 +846,11 @@
       flag.setAttribute("aria-hidden", "true");
       flag.textContent = " ⚑";
       serialTd.appendChild(flag);
+      row.flagEl = flag;
     }
+    row.tr = tr;
+    var bucket = FILTER_BUCKETS[activeFilter];
+    tr.hidden = !!(bucket && !bucket[effectiveStatus(row)]);
 
     button.addEventListener("click", function () {
       toggleDetail(row, tr, button);
@@ -859,12 +924,78 @@
     return block;
   }
 
+  /* ---------- per-field reviewer checks (flagged rows only) ----------
+     The human confirms the photo against the submittal form and the model's
+     reading, field by field: "Confirm" = the reading is right as scanned;
+     "Update" = the model misread the label, with the corrected reading typed
+     in. Checks are evidence for the audit trail (they ride the CSV) — the
+     row's outcome stays the human's Approve / Deny call above. */
+
+  function fieldReviewState(row, key) {
+    if (!row.fieldReview) { row.fieldReview = {}; }
+    if (!row.fieldReview[key]) { row.fieldReview[key] = { mode: null, corrected: "" }; }
+    return row.fieldReview[key];
+  }
+
+  function checkCell(row, key) {
+    var td = document.createElement("td");
+    td.className = "check-cell";
+    td.setAttribute("data-label", "Your check");
+    var state = fieldReviewState(row, key);
+
+    function checkboxOption(labelText) {
+      var label = document.createElement("label");
+      label.className = "check-option";
+      var box = document.createElement("input");
+      box.type = "checkbox";
+      label.appendChild(box);
+      label.appendChild(document.createTextNode(" " + labelText));
+      td.appendChild(label);
+      return box;
+    }
+
+    var confirmBox = checkboxOption("Confirm reading");
+    var updateBox = checkboxOption("Update reading");
+    var input = document.createElement("input");
+    input.type = "text";
+    input.className = "check-input";
+    input.setAttribute("aria-label", "Corrected reading for " + FIELD_NAMES[key]);
+    td.appendChild(input);
+
+    function sync() {
+      confirmBox.checked = state.mode === "confirm";
+      updateBox.checked = state.mode === "update";
+      input.hidden = state.mode !== "update";
+      input.value = state.corrected;
+    }
+    confirmBox.addEventListener("change", function () {
+      state.mode = confirmBox.checked ? "confirm" : null;
+      sync();
+    });
+    updateBox.addEventListener("change", function () {
+      state.mode = updateBox.checked ? "update" : null;
+      if (state.mode === "update" && !state.corrected) {
+        var field = row.entry.fields[key];
+        var extracted = field ? field.extracted : null;
+        state.corrected = (extracted === null || extracted === undefined) ? "" : String(extracted);
+      }
+      sync();
+      if (state.mode === "update") { input.focus(); }
+    });
+    input.addEventListener("input", function () { state.corrected = input.value; });
+    sync();
+    return td;
+  }
+
   function comparisonTable(row) {
+    var flagged = STATUSES[row.status].flagged;
+    var columnCount = flagged ? 6 : 5;
     var table = document.createElement("table");
     table.className = "detail-table";
     var head = document.createElement("tr");
-    ["What we checked", "Submittal form says", "Scan found", "Result", "Explanation"]
-      .forEach(function (title) {
+    var headers = ["What we checked", "Submittal form says", "Scan found", "Result", "Explanation"];
+    if (flagged) { headers.push("Your check"); }
+    headers.forEach(function (title) {
         var th = document.createElement("th");
         th.scope = "col";
         th.textContent = title;
@@ -894,6 +1025,7 @@
         if (CELL_LABELS[index]) { td.setAttribute("data-label", CELL_LABELS[index]); }
         trEl.appendChild(td);
       });
+      if (flagged) { trEl.appendChild(checkCell(row, key)); }
       table.appendChild(trEl);
 
       // The warning clause-by-clause diff, as prose, under the warning row.
@@ -905,7 +1037,7 @@
       ) {
         var diffTr = document.createElement("tr");
         var diffTd = document.createElement("td");
-        diffTd.colSpan = 5;
+        diffTd.colSpan = columnCount;
         diffTd.appendChild(clauseDiffBlock(field.detail.clause_diff));
         diffTr.appendChild(diffTd);
         table.appendChild(diffTr);
@@ -930,6 +1062,73 @@
     });
     block.appendChild(list);
     return block;
+  }
+
+  /* Approve / Deny controls for flagged rows. The decision lives on the row
+     (client-only, R8: nothing stored server-side), overrides the displayed
+     status, and rides the CSV export's pass_fail + reviewer_note columns. */
+  function decisionBar(row) {
+    var wrapper = document.createElement("div");
+    wrapper.className = "decision-block";
+    var bar = document.createElement("div");
+    bar.className = "decision-bar";
+    wrapper.appendChild(bar);
+
+    // Feedback to the company: WHY the label failed. Rides the CSV export's
+    // reviewer_comment column so the notice can be sent from the record.
+    var commentLabel = document.createElement("label");
+    commentLabel.className = "decision-comment-label";
+    commentLabel.textContent =
+      "Feedback for the company — why this label failed (goes in the results CSV):";
+    var comment = document.createElement("textarea");
+    comment.className = "decision-comment";
+    comment.rows = 3;
+    comment.placeholder =
+      "e.g. The alcohol content printed on the label (14.2%) does not match the application (13.5%).";
+    comment.value = row.comment || "";
+    comment.addEventListener("input", function () { row.comment = comment.value; });
+    commentLabel.appendChild(comment);
+    wrapper.appendChild(commentLabel);
+    var note = document.createElement("p");
+    note.className = "decision-note";
+    bar.appendChild(note);
+    var approve = document.createElement("button");
+    approve.type = "button";
+    approve.className = "button button-secondary decision-approve";
+    approve.textContent = "Approve";
+    bar.appendChild(approve);
+    var deny = document.createElement("button");
+    deny.type = "button";
+    deny.className = "button button-secondary decision-deny";
+    deny.textContent = "Deny";
+    bar.appendChild(deny);
+    var undo = document.createElement("button");
+    undo.type = "button";
+    undo.className = "button button-secondary";
+    undo.textContent = "Undo decision";
+    bar.appendChild(undo);
+
+    function sync() {
+      var decided = !!row.review;
+      note.textContent = decided
+        ? "Reviewer decision: " + (row.review === "approved" ? "approved." : "denied.")
+        : "Your call — approve or deny this label:";
+      approve.hidden = decided;
+      deny.hidden = decided;
+      undo.hidden = !decided;
+    }
+
+    function decide(decision) {
+      row.review = decision;
+      refreshRowStatus(row);
+      sync();
+    }
+
+    approve.addEventListener("click", function () { decide("approved"); });
+    deny.addEventListener("click", function () { decide("denied"); });
+    undo.addEventListener("click", function () { decide(null); });
+    sync();
+    return wrapper;
   }
 
   function buildDetailPanel(row) {
@@ -974,6 +1173,7 @@
 
     var body = document.createElement("div");
     body.className = "detail-body";
+    if (STATUSES[row.status].flagged) { body.appendChild(decisionBar(row)); }
     if (row.entry.error) {
       var callout = document.createElement("p");
       callout.className = "detail-error";
@@ -1019,9 +1219,15 @@
 
   /* ---------- summary banner ---------- */
 
-  function renderSummary(totalTimeMs) {
+  function renderBanner() {
     var counts = { pass: 0, fail: 0, review: 0, error: 0, missing: 0 };
-    rows.forEach(function (row) { counts[row.status] += 1; });
+    var decided = 0;
+    rows.forEach(function (row) {
+      var status = effectiveStatus(row);
+      if (status === "approved") { counts.pass += 1; decided += 1; }
+      else if (status === "denied") { counts.fail += 1; decided += 1; }
+      else { counts[status] += 1; }
+    });
 
     var overall = "match";
     if (counts.fail > 0) { overall = "mismatch"; }
@@ -1046,6 +1252,7 @@
           : counts.missing + " form rows had no photo"
       );
     }
+    if (decided > 0) { parts.push(decided + " decided by reviewer"); }
 
     var scanned = counts.pass + counts.fail + counts.review + counts.error;
     var labelWord = scanned === 1 ? "1 label scanned" : scanned + " labels scanned";
@@ -1054,6 +1261,10 @@
     } else {
       bannerText.textContent = labelWord + " — " + parts.join(", ");
     }
+  }
+
+  function renderSummary(totalTimeMs) {
+    renderBanner();
     timing.textContent = "Finished in " + (totalTimeMs / 1000).toFixed(1) + " seconds.";
     // Scan is done: move focus to the summary banner so screen readers
     // announce completion (aria-live on the section is the backup).
@@ -1075,10 +1286,26 @@
     return row.scoreText.replace(" fields match", "");
   }
 
+  /* "Brand name: reading confirmed; Alcohol content: reading updated to
+     “13.5%”" — the reviewer's per-field checks, for the audit trail. */
+  function fieldChecksSummary(row) {
+    if (!row.fieldReview) { return ""; }
+    return FIELD_ORDER.filter(function (key) {
+      var state = row.fieldReview[key];
+      return state && state.mode;
+    }).map(function (key) {
+      var state = row.fieldReview[key];
+      return FIELD_NAMES[key] + ": " + (state.mode === "confirm"
+        ? "reading confirmed"
+        : "reading updated to “" + state.corrected + "”");
+    }).join("; ");
+  }
+
   function buildCsv(exportRows) {
     var header = [
       "serial", "filename", "scan_timestamp", "processing_seconds",
-      "over_5s_budget", "pass_fail", "score", "required_missing", "reviewer_note"
+      "over_5s_budget", "pass_fail", "score", "required_missing", "reviewer_note",
+      "reviewer_comment", "field_checks"
     ];
     FIELD_ORDER.forEach(function (key) {
       header.push(key + "_verdict");
@@ -1095,10 +1322,17 @@
         isoStamp(row.scannedAt),
         elapsedSecondsValue(row.entry) || "",
         isOverBudget(row.entry) ? "yes" : "no",
-        STATUSES[row.status].badge,
+        STATUSES[effectiveStatus(row)].badge,
         csvScore(row),
         missingKeys,
-        ""  // reviewer_note: fill in spreadsheet for local audit trail (R8: nothing stored server-side)
+        // reviewer_note: the in-app decision if one was made; otherwise blank
+        // to fill in spreadsheet (R8: nothing stored server-side).
+        row.review
+          ? (row.review === "approved" ? "Approved" : "Denied") +
+            " by reviewer (was " + STATUSES[row.status].badge + ")"
+          : "",
+        row.comment || "",
+        fieldChecksSummary(row)
       ];
       FIELD_ORDER.forEach(function (key) {
         // Required-elements misses ride the EXISTING verdict/reason columns
