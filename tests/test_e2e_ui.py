@@ -362,12 +362,40 @@ class TestErrorPaths:
         playwright_api.expect(
             worksheet_rows(page).first.locator(".status-badge")
         ).to_have_text("ERROR")
-        # The page stays usable: the button re-enables and a retry succeeds.
+        # The page stays usable: review mode's "Start a new scan" restores the
+        # form with the selection intact, and a retry succeeds.
+        playwright_api.expect(page.locator("#recap-bar")).to_be_visible()
+        page.click("#new-scan")
         playwright_api.expect(page.locator("#scan-button")).to_be_enabled()
         extractor.delegate = FakeExtractor(GOOD_EXTRACTION)
         page.click("#scan-button")
         playwright_api.expect(page.locator("#banner-text")).to_have_text(
             "1 label scanned — 0 passed, 1 needs review", timeout=15_000
+        )
+
+    def test_review_mode_recap_bar_replaces_form_and_new_scan_restores_it(
+        self, page, base_url
+    ):
+        scan_files(page, base_url, [str(SAMPLE_LABEL)])
+        wait_for_banner(page)
+        # Scan done: the upload form gives way to the recap bar; the
+        # worksheet is the page.
+        playwright_api.expect(page.locator("#scan-form")).to_be_hidden()
+        recap = page.locator("#recap-bar")
+        playwright_api.expect(recap).to_be_visible()
+        playwright_api.expect(page.locator("#recap-text")).to_have_text(
+            "1 photo scanned — no submittal form."
+        )
+        # "Start a new scan": form back, recap + old worksheet gone, focus on
+        # step 1 so keyboard users land at the top of the flow.
+        page.click("#new-scan")
+        playwright_api.expect(page.locator("#scan-form")).to_be_visible()
+        playwright_api.expect(recap).to_be_hidden()
+        playwright_api.expect(page.locator("#results")).to_be_hidden()
+        assert page.evaluate("document.activeElement.id") == "upload-heading"
+        # The photo selection is kept — re-running is one click.
+        playwright_api.expect(page.locator("#file-summary")).to_contain_text(
+            "1 photo selected"
         )
 
     def test_new_photo_selection_clears_stale_worksheet(self, page, base_url):

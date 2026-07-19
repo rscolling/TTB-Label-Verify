@@ -204,6 +204,10 @@
   var ingestPreview = document.getElementById("ingest-preview");
   var ingestPreviewBody = document.getElementById("ingest-preview-table").querySelector("tbody");
   var matchNotice = document.getElementById("match-notice");
+  var recapBar = document.getElementById("recap-bar");
+  var recapText = document.getElementById("recap-text");
+  var newScanButton = document.getElementById("new-scan");
+  var uploadHeading = document.getElementById("upload-heading");
 
   var selectedFiles = [];
   var csvFile = null;
@@ -220,6 +224,10 @@
     rows = [];
     worksheetBody.textContent = "";
     resultsSection.hidden = true;
+    // Leaving review mode (WP8): whatever cleared the worksheet, the upload
+    // form is the page again.
+    recapBar.hidden = true;
+    form.hidden = false;
   }
 
   function setFiles(fileList) {
@@ -1060,6 +1068,28 @@
     downloadCsvText(buildCsv(rows), "label-scan-worksheet.csv");
   });
 
+  /* ---------- review mode (WP8): after a scan the upload form gives way to a
+     slim recap bar so the worksheet is the page; "Start a new scan" resets
+     everything back to the empty step-1 state. ---------- */
+
+  function enterReviewMode(total, formName) {
+    recapText.textContent = plural(total, "photo") + " scanned" +
+      (formName ? " against “" + formName + "”." : " — no submittal form.");
+    form.hidden = true;
+    recapBar.hidden = false;
+  }
+
+  /* The photo + form selections are kept: re-running the same batch (after an
+     error, or against a corrected form) is one click, and choosing different
+     photos already clears everything via the existing stale-state rules. */
+  newScanButton.addEventListener("click", function () {
+    clearWorksheet();      // also restores the form / hides the recap bar
+    matchNotice.hidden = true;
+    hideError();
+    uploadHeading.focus({ preventScroll: false });
+    uploadHeading.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+
   /* ---------- submit: matching plan + chunked requests for real progress ---- */
 
   function sendChunk(chunk, manifestSource) {
@@ -1324,10 +1354,12 @@
       });
     });
 
+    var formName = csvFile ? csvFile.name : null;  // snapshot for the recap
     sequence.then(function () {
       renderSummary(Date.now() - startedAt);
       progressBlock.hidden = true;
       setBusy(false);
+      enterReviewMode(total, formName);
     });
   });
 })();
