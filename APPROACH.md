@@ -392,6 +392,16 @@ each fixed and pinned by a regression test:
   in sub-batches of 10 and re-sends the manifest with each; a manifest-level
   error therefore appears as error rows for each sub-batch rather than one
   banner. The direct API rejects it once, before any spend.
+- **The live demo runs over the 5 s budget** (L6 deploy smoke, 2026-07-19):
+  health 200 in 0.6 s; single label correct on all 7 fields but 5.2–6.7 s
+  per label across three runs (local eval: ~4.5 s); batch of 5 correct
+  (4 pass, the seeded-wrong ABV label fails as designed) in 13 s wall;
+  bad-file and missing-brand error cases return the friendly 400 / 422
+  shapes. The overage is the free Render instance (shared CPU for the
+  1568 px downscale, plus its network path to the Anthropic API), not the
+  pipeline — the code path is one vision call, same as the in-budget local
+  measurement. Fix when it matters: a paid Render tier (dedicated CPU) or
+  hosting in a region closer to the API endpoint.
 - **Anthropic rate limits bound batch throughput.** 300 labels is 300 vision
   calls; `BATCH_CONCURRENCY` (default 4) is the throttle. A production system
   would add queueing and backoff beyond the built-in single retry for
