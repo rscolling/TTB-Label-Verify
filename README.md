@@ -99,8 +99,10 @@ There is one flow, whether you have one label or three hundred:
 
 Rows that name a photo file are matched by file name. If the form has no
 file names, rows are matched to photos **in order** (a persistent notice
-reminds you to check the pairings); if the row and photo counts differ, the
-scan is blocked with an explanation rather than guessing.
+reminds you to check the pairings). If you upload **fewer photos than form
+rows**, the scan still runs: unmatched form rows appear in the worksheet and
+CSV as **MISSING** (with brand / expected file name), and the summary banner
+counts them (e.g. “2 form rows had no photo”).
 
 Each worksheet row shows a serial number, the scan timestamp, the per-label
 processing time, a thumbnail, the seven extracted field values each with a

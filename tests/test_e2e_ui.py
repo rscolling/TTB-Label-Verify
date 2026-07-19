@@ -362,12 +362,14 @@ class TestErrorPaths:
         playwright_api.expect(
             worksheet_rows(page).first.locator(".status-badge")
         ).to_have_text("ERROR")
-        # The page stays usable: review mode's "Start a new scan" restores the
-        # form with the selection intact, and a retry succeeds.
+        # The page stays usable: "Start a new scan" restores an empty form;
+        # re-add photos and retry succeeds.
         playwright_api.expect(page.locator("#recap-bar")).to_be_visible()
         page.click("#new-scan")
         playwright_api.expect(page.locator("#scan-button")).to_be_enabled()
+        playwright_api.expect(page.locator("#dropzone-empty")).to_be_visible()
         extractor.delegate = FakeExtractor(GOOD_EXTRACTION)
+        page.set_input_files("#file-input", [str(SAMPLE_LABEL)])
         page.click("#scan-button")
         playwright_api.expect(page.locator("#banner-text")).to_have_text(
             "1 label scanned — 0 passed, 1 needs review", timeout=15_000
@@ -386,17 +388,18 @@ class TestErrorPaths:
         playwright_api.expect(page.locator("#recap-text")).to_have_text(
             "1 photo scanned — no submittal form."
         )
-        # "Start a new scan": form back, recap + old worksheet gone, focus on
-        # step 1 so keyboard users land at the top of the flow.
+        # "Start a new scan": form back empty, recap + old worksheet gone, focus
+        # on step 1 so keyboard users land at the top of the flow.
         page.click("#new-scan")
         playwright_api.expect(page.locator("#scan-form")).to_be_visible()
         playwright_api.expect(recap).to_be_hidden()
         playwright_api.expect(page.locator("#results")).to_be_hidden()
         assert page.evaluate("document.activeElement.id") == "upload-heading"
-        # The photo selection is kept — re-running is one click.
-        playwright_api.expect(page.locator("#file-summary")).to_contain_text(
-            "1 photo selected"
-        )
+        # Selections are cleared — empty dropzones ready for a new batch.
+        playwright_api.expect(page.locator("#dropzone-empty")).to_be_visible()
+        playwright_api.expect(page.locator("#csv-dropzone-empty")).to_be_visible()
+        playwright_api.expect(page.locator("#dropzone-selected")).to_be_hidden()
+        playwright_api.expect(page.locator("#csv-dropzone-selected")).to_be_hidden()
 
     def test_new_photo_selection_clears_stale_worksheet(self, page, base_url):
         scan_files(page, base_url, [str(SAMPLE_LABEL)])

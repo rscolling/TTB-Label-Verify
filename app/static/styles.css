@@ -510,6 +510,11 @@ main { padding-top: 2rem; }
 .status-fail   { background: #fff; border-color: var(--bad-border); color: var(--bad-ink); }
 .status-review { background: #fff; border-color: var(--warn-border); color: var(--warn-ink); }
 .status-error  { background: #fff; border-color: var(--warn-border); color: var(--warn-ink); }
+.status-missing { background: var(--warn-bg); border-color: var(--warn-border); color: var(--warn-ink); }
+
+/* Form row with no uploaded photo */
+.row-missing { background: var(--warn-bg); }
+.row-missing:hover { background: #f8e8c8; }
 
 .review-button {
   display: block;

@@ -62,7 +62,9 @@
     pass: { badge: "PASS", cls: "status-pass", flagged: false },
     fail: { badge: "FAIL", cls: "status-fail", flagged: true },
     review: { badge: "REVIEW", cls: "status-review", flagged: true },
-    error: { badge: "ERROR", cls: "status-error", flagged: true }
+    error: { badge: "ERROR", cls: "status-error", flagged: true },
+    // Form row with no uploaded photo (fewer images than submittal items).
+    missing: { badge: "MISSING", cls: "status-missing", flagged: true }
   };
 
   var NO_DATA_TEXT = "No submittal data — needs review";
@@ -243,6 +245,24 @@
     // form is the page again.
     recapBar.hidden = true;
     form.hidden = false;
+  }
+
+  /* Empty step-1 / step-2 dropzones (used by "Start a new scan"). */
+  function clearPhotoSelection() {
+    selectedFiles = [];
+    fileInput.value = "";
+    fileSummary.textContent = "";
+    dropzoneEmpty.hidden = false;
+    dropzoneSelected.hidden = true;
+  }
+
+  function clearFormSelection() {
+    csvInput.value = "";
+    csvFile = null;
+    csvDropzoneEmpty.hidden = false;
+    csvDropzoneSelected.hidden = true;
+    csvStatus.textContent = "";
+    resetIngest();
   }
 
   function setFiles(fileList) {
@@ -713,11 +733,18 @@
     var photoTd = document.createElement("td");
     photoTd.className = "photo-cell";
     photoTd.setAttribute("data-label", "Photo");
-    var thumb = document.createElement("img");
-    thumb.className = "thumb";
-    thumb.alt = "";
-    thumb.src = row.url;
-    photoTd.appendChild(thumb);
+    if (row.url) {
+      var thumb = document.createElement("img");
+      thumb.className = "thumb";
+      thumb.alt = "";
+      thumb.src = row.url;
+      photoTd.appendChild(thumb);
+    } else {
+      var noPhoto = document.createElement("span");
+      noPhoto.className = "photo-name muted";
+      noPhoto.textContent = "No photo";
+      photoTd.appendChild(noPhoto);
+    }
     var name = document.createElement("span");
     name.className = "photo-name";
     name.textContent = row.filename;
@@ -729,7 +756,8 @@
       errorTd.className = "error-cell";
       errorTd.colSpan = FIELD_ORDER.length;
       errorTd.setAttribute("data-label", "Problem");
-      errorTd.textContent = "Couldn't scan — " + row.entry.error.message;
+      var prefix = row.status === "missing" ? "" : "Couldn't scan — ";
+      errorTd.textContent = prefix + row.entry.error.message;
       tr.appendChild(errorTd);
     } else {
       FIELD_ORDER.forEach(function (key) {
@@ -992,12 +1020,14 @@
   /* ---------- summary banner ---------- */
 
   function renderSummary(totalTimeMs) {
-    var counts = { pass: 0, fail: 0, review: 0, error: 0 };
+    var counts = { pass: 0, fail: 0, review: 0, error: 0, missing: 0 };
     rows.forEach(function (row) { counts[row.status] += 1; });
 
     var overall = "match";
     if (counts.fail > 0) { overall = "mismatch"; }
-    else if (counts.review > 0 || counts.error > 0) { overall = "review"; }
+    else if (counts.review > 0 || counts.error > 0 || counts.missing > 0) {
+      overall = "review";
+    }
 
     var icons = { match: "✅", review: "⚠️", mismatch: "❌" };
     banner.className = "banner banner-" + overall;
@@ -1009,9 +1039,21 @@
       parts.push(counts.review + (counts.review === 1 ? " needs review" : " need review"));
     }
     if (counts.error > 0) { parts.push(counts.error + " couldn't be scanned"); }
+    if (counts.missing > 0) {
+      parts.push(
+        counts.missing === 1
+          ? "1 form row had no photo"
+          : counts.missing + " form rows had no photo"
+      );
+    }
 
-    bannerText.textContent = (rows.length === 1 ? "1 label scanned — " : rows.length + " labels scanned — ")
-      + parts.join(", ");
+    var scanned = counts.pass + counts.fail + counts.review + counts.error;
+    var labelWord = scanned === 1 ? "1 label scanned" : scanned + " labels scanned";
+    if (counts.missing > 0 && scanned === 0) {
+      bannerText.textContent = parts.join(", ");
+    } else {
+      bannerText.textContent = labelWord + " — " + parts.join(", ");
+    }
     timing.textContent = "Finished in " + (totalTimeMs / 1000).toFixed(1) + " seconds.";
     // Scan is done: move focus to the summary banner so screen readers
     // announce completion (aria-live on the section is the backup).
@@ -1103,7 +1145,7 @@
 
   /* ---------- review mode (WP8): after a scan the upload form gives way to a
      slim recap bar so the worksheet is the page; "Start a new scan" resets
-     everything back to the empty step-1 state. ---------- */
+     everything back to the empty step-1 state (photos, form, results). ---------- */
 
   function enterReviewMode(total, formName) {
     recapText.textContent = plural(total, "photo") + " scanned" +
@@ -1112,13 +1154,14 @@
     recapBar.hidden = false;
   }
 
-  /* The photo + form selections are kept: re-running the same batch (after an
-     error, or against a corrected form) is one click, and choosing different
-     photos already clears everything via the existing stale-state rules. */
   newScanButton.addEventListener("click", function () {
-    clearWorksheet();      // also restores the form / hides the recap bar
+    clearWorksheet();      // restores the form / hides the recap bar
+    clearPhotoSelection(); // empty dropzone — no leftover photos
+    clearFormSelection();  // empty form slot — no leftover submittal
     matchNotice.hidden = true;
+    matchNotice.textContent = "";
     hideError();
+    progressBlock.hidden = true;
     uploadHeading.focus({ preventScroll: false });
     uploadHeading.scrollIntoView({ behavior: "smooth", block: "start" });
   });
@@ -1203,12 +1246,37 @@
     return count + " " + word + (count === 1 ? "" : "s");
   }
 
+  function photoKeySet(fileList) {
+    var keys = {};
+    fileList.forEach(function (file) { keys[normalizeName(file.name)] = true; });
+    return keys;
+  }
+
+  function rowsMissingPhotos(formRows, fileList) {
+    var keys = photoKeySet(fileList);
+    return formRows.filter(function (row) {
+      return row.filename && !keys[normalizeName(row.filename)];
+    });
+  }
+
+  function missingFormNotice(missingFormRows) {
+    if (!missingFormRows || missingFormRows.length === 0) { return null; }
+    return plural(missingFormRows.length, "form row") +
+      " had no matching photo — listed as MISSING in the worksheet.";
+  }
+
   /* Decide how the photos and the (already-ingested) form rows pair up.
      Returns { error: message } to block the scan, or
-     { partitions: [{files, manifest: File|Blob|null, hasSubmittal}], notice }. */
+     { partitions, notice, missingFormRows }.
+     missingFormRows: submittal rows with no uploaded photo (fewer images
+     than form items, or named files not among the selected photos). */
   function buildScanPlan(files, formFile) {
     if (!formFile) {
-      return { partitions: [{ files: files, manifest: null, hasSubmittal: false }], notice: null };
+      return {
+        partitions: [{ files: files, manifest: null, hasSubmittal: false }],
+        notice: null,
+        missingFormRows: []
+      };
     }
     var haveRows = ingest.status === "ready" && ingest.file === formFile && ingest.rows;
     var planRows = haveRows ? ingest.rows : null;
@@ -1218,7 +1286,12 @@
       // the authority (and the QA-locked semantics stay byte-identical). Only
       // a CSV whose rows lack file names needs the serialized path below.
       if (!haveRows || planRows.every(function (row) { return !!row.filename; })) {
-        return { partitions: [{ files: files, manifest: formFile, hasSubmittal: true }], notice: null };
+        var earlyMissing = haveRows ? rowsMissingPhotos(planRows, files) : [];
+        return {
+          partitions: [{ files: files, manifest: formFile, hasSubmittal: true }],
+          notice: missingFormNotice(earlyMissing),
+          missingFormRows: earlyMissing
+        };
       }
     } else if (ingest.status === "loading" && ingest.file === formFile) {
       return { error: "Still reading the submittal form — give it a second, then press Run again." };
@@ -1243,6 +1316,7 @@
     var unnamed = planRows.filter(function (row) { return !row.filename; });
     var notice = null;
     var noSubmittalPhotos = [];
+    var missingFormRows = [];
 
     var claimed = {};
     named.forEach(function (row) { claimed[normalizeName(row.filename)] = true; });
@@ -1250,18 +1324,80 @@
       return !claimed[normalizeName(file.name)];
     });
 
+    // Named form rows whose file was not uploaded → MISSING in the report.
+    missingFormRows = rowsMissingPhotos(named, files);
+
     if (unnamed.length > 0) {
-      if (named.length === 0 && planRows.length !== files.length) {
-        return {
-          error: "The form has " + plural(planRows.length, "row") + " and you added " +
-            plural(files.length, "photo") + ", but the form doesn't say which photo " +
-            "each row belongs to. Add a filename column to the form, or make the " +
-            "row and photo counts match."
-        };
-      }
-      if (unnamed.length === leftoverPhotos.length) {
-        // Unambiguous: pair the unnamed rows with the unclaimed photos in
-        // selection order — but only if every pairing target is distinct.
+      if (named.length === 0) {
+        // Pure order-matching: pair what we can; leftover form rows are MISSING
+        // when there are fewer photos than form items (never a silent drop).
+        if (planRows.length > files.length) {
+          var pairCount = files.length;
+          var toPair = planRows.slice(0, pairCount);
+          missingFormRows = planRows.slice(pairCount).map(function (row) {
+            return Object.assign({}, row);
+          });
+          var seenAll = {};
+          for (var p0 = 0; p0 < files.length; p0++) {
+            var k0 = normalizeName(files[p0].name);
+            if (seenAll[k0]) {
+              return {
+                error: "Two of your photos share the file name “" + files[p0].name +
+                  "” — rename one so each form row can be matched to the right photo."
+              };
+            }
+            seenAll[k0] = true;
+          }
+          toPair.forEach(function (row, index) {
+            row.filename = wireSafeFilename(files[index].name);
+          });
+          planRows = toPair;
+          notice = "Matched " + plural(pairCount, "photo") + " to the first " +
+            plural(pairCount, "form row") + " by order; " +
+            missingFormNotice(missingFormRows);
+          leftoverPhotos = [];
+        } else if (planRows.length < files.length) {
+          // More photos than form rows: pair by order; leftover photos scan
+          // without submittal data.
+          var seenFewer = {};
+          for (var p1 = 0; p1 < planRows.length; p1++) {
+            var k1 = normalizeName(files[p1].name);
+            if (seenFewer[k1]) {
+              return {
+                error: "Two of your photos share the file name “" + files[p1].name +
+                  "” — rename one so each form row can be matched to the right photo."
+              };
+            }
+            seenFewer[k1] = true;
+            planRows[p1].filename = wireSafeFilename(files[p1].name);
+            claimed[normalizeName(files[p1].name)] = true;
+          }
+          noSubmittalPhotos = files.slice(planRows.length);
+          leftoverPhotos = [];
+          notice = "Matched " + plural(planRows.length, "form row") + " to the first " +
+            plural(planRows.length, "photo") + " by order; " +
+            plural(noSubmittalPhotos.length, "extra photo") +
+            " scanned without submittal data.";
+        } else {
+          // Equal counts — order-match everything.
+          var seenEq = {};
+          for (var p2 = 0; p2 < files.length; p2++) {
+            var k2 = normalizeName(files[p2].name);
+            if (seenEq[k2]) {
+              return {
+                error: "Two of your photos share the file name “" + files[p2].name +
+                  "” — rename one so each form row can be matched to the right photo."
+              };
+            }
+            seenEq[k2] = true;
+            planRows[p2].filename = wireSafeFilename(files[p2].name);
+          }
+          notice = "Matched " + plural(planRows.length, "row") + " to " +
+            plural(planRows.length, "photo") + " by order — check the pairings in the worksheet.";
+          leftoverPhotos = [];
+        }
+      } else if (unnamed.length === leftoverPhotos.length) {
+        // Mixed: unambiguous order-pair for leftovers.
         var seen = {};
         for (var p = 0; p < leftoverPhotos.length; p++) {
           var key = normalizeName(leftoverPhotos[p].name);
@@ -1274,22 +1410,54 @@
           seen[key] = true;
         }
         unnamed.forEach(function (row, index) {
-          // Write the wire-safe name into the manifest so it matches what the
-          // browser will send in multipart (QA5-F1).
           row.filename = wireSafeFilename(leftoverPhotos[index].name);
           claimed[normalizeName(leftoverPhotos[index].name)] = true;
         });
         notice = "Matched " + plural(unnamed.length, "row") + " to " +
           plural(unnamed.length, "photo") + " by order — check the pairings in the worksheet.";
+        if (missingFormRows.length > 0) {
+          notice += " " + missingFormNotice(missingFormRows);
+        }
         leftoverPhotos = [];
+      } else if (unnamed.length > leftoverPhotos.length && leftoverPhotos.length > 0) {
+        // Fewer leftover photos than unnamed form rows: pair what we can.
+        var seenMix = {};
+        for (var pm = 0; pm < leftoverPhotos.length; pm++) {
+          var km = normalizeName(leftoverPhotos[pm].name);
+          if (seenMix[km]) {
+            return {
+              error: "Two of your photos share the file name “" + leftoverPhotos[pm].name +
+                "” — rename one so each form row can be matched to the right photo."
+            };
+          }
+          seenMix[km] = true;
+        }
+        var pairedUnnamed = unnamed.slice(0, leftoverPhotos.length);
+        var unpairedUnnamed = unnamed.slice(leftoverPhotos.length);
+        pairedUnnamed.forEach(function (row, index) {
+          row.filename = wireSafeFilename(leftoverPhotos[index].name);
+          claimed[normalizeName(leftoverPhotos[index].name)] = true;
+        });
+        missingFormRows = missingFormRows.concat(unpairedUnnamed);
+        planRows = named.concat(pairedUnnamed);
+        leftoverPhotos = [];
+        notice = missingFormNotice(missingFormRows);
       } else {
-        // Ambiguous: set the unnamed rows aside; the unclaimed photos scan
-        // without submittal data (flagged rows — never a silent mispairing).
+        // Ambiguous or no leftover photos for unnamed rows: unnamed → MISSING;
+        // unclaimed photos scan without submittal data.
         planRows = named;
         noSubmittalPhotos = leftoverPhotos;
-        notice = plural(unnamed.length, "form row") + " couldn't be matched to a " +
-          "photo — the unmatched photos were scanned without submittal data.";
+        missingFormRows = missingFormRows.concat(unnamed);
+        leftoverPhotos = [];
+        notice = missingFormNotice(missingFormRows);
+        if (noSubmittalPhotos.length > 0) {
+          notice = (notice ? notice + " " : "") +
+            plural(noSubmittalPhotos.length, "photo") +
+            " had no form row and were scanned without submittal data.";
+        }
       }
+    } else if (missingFormRows.length > 0) {
+      notice = missingFormNotice(missingFormRows);
     }
 
     var matchedFiles = files;
@@ -1306,7 +1474,11 @@
     if (noSubmittalPhotos.length > 0) {
       partitions.push({ files: noSubmittalPhotos, manifest: null, hasSubmittal: false });
     }
-    return { partitions: partitions, notice: notice };
+    return {
+      partitions: partitions,
+      notice: notice,
+      missingFormRows: missingFormRows
+    };
   }
 
   form.addEventListener("submit", function (event) {
@@ -1336,6 +1508,7 @@
     matchNotice.hidden = !plan.notice;
 
     var total = files.length;
+    var missingFormRows = plan.missingFormRows || [];
     var jobs = [];  // one entry per sub-batch: { chunk, manifest, hasSubmittal }
     plan.partitions.forEach(function (partition) {
       for (var i = 0; i < partition.files.length; i += CHUNK_SIZE) {
@@ -1372,6 +1545,35 @@
       appendRow(row);
     }
 
+    function addMissingFormRow(formRow) {
+      var expectedFile = formRow.filename ? String(formRow.filename) : "";
+      var brandBit = formRow.brand ? "brand “" + formRow.brand + "”" : "this application";
+      var message = expectedFile
+        ? "No photo was uploaded for " + brandBit + " (expected file “" + expectedFile + "”)."
+        : "No photo was uploaded for " + brandBit + " — fewer photos than form rows.";
+      var row = {
+        serial: pad3(nextSerial++),
+        filename: expectedFile || "(no file name on form)",
+        file: null,
+        url: null,
+        scannedAt: new Date(),
+        hasSubmittal: true,
+        entry: {
+          error: { code: "missing_photo", message: message },
+          missing_form_row: {
+            brand: formRow.brand || null,
+            class_type: formRow.class_type || null,
+            filename: formRow.filename || null
+          }
+        },
+        requiredMissing: [],
+        status: "missing",
+        scoreText: "—"
+      };
+      rows.push(row);
+      appendRow(row);
+    }
+
     var sequence = Promise.resolve();
     jobs.forEach(function (job) {
       sequence = sequence.then(function () {
@@ -1390,7 +1592,7 @@
           chunkResults.forEach(function (entry, index) {
             addRow(job.chunk[index] || { name: entry.filename }, entry, job.hasSubmittal);
           });
-          updateProgress(rows.length, total);
+          updateProgress(Math.min(rows.length, total), total);
           resultsSection.hidden = false;
         });
       });
@@ -1398,6 +1600,17 @@
 
     var formName = csvFile ? csvFile.name : null;  // snapshot for the recap
     sequence.then(function () {
+      // Append form rows that had no photo so the report is complete.
+      missingFormRows.forEach(function (formRow) {
+        addMissingFormRow(formRow);
+      });
+      if (missingFormRows.length > 0) {
+        resultsSection.hidden = false;
+        if (!matchNotice.textContent) {
+          matchNotice.textContent = missingFormNotice(missingFormRows);
+          matchNotice.hidden = false;
+        }
+      }
       renderSummary(Date.now() - startedAt);
       progressBlock.hidden = true;
       setBusy(false);

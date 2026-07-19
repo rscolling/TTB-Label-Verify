@@ -292,6 +292,40 @@ class TestHappyScanWithCsv:
         playwright_api.expect(error_row).to_contain_text("doesn't have a row for")
         playwright_api.expect(error_row.locator(".flag")).to_have_count(1)
 
+    def test_fewer_photos_than_form_rows_lists_missing_in_report(self, page, base_url):
+        """When the submittal has more rows than photos, unmatched form rows
+        appear as MISSING in the worksheet and banner (not silently dropped)."""
+        paths = label_paths(1)
+        name = Path(paths[0]).name
+        manifest = (
+            "filename,brand,class_type,abv,net_contents,producer,origin_country,is_import\n"
+            f"{name},{MATCHING_ROW}\n"
+            "absent-a.png,Missing Brand A,,,,,,false\n"
+            "absent-b.png,Missing Brand B,,,,,,false\n"
+        )
+        page.goto(base_url + "/")
+        page.set_input_files("#file-input", paths)
+        page.set_input_files("#csv-input", files=csv_payload(manifest))
+        page.click("#scan-button")
+
+        playwright_api.expect(page.locator("#banner-text")).to_contain_text(
+            "form rows had no photo", timeout=15_000
+        )
+        playwright_api.expect(page.locator("#banner-text")).to_contain_text("1 passed")
+        playwright_api.expect(page.locator("#match-notice")).to_contain_text("MISSING")
+        playwright_api.expect(worksheet_rows(page)).to_have_count(3)
+
+        missing_a = worksheet_rows(page).nth(1)
+        playwright_api.expect(missing_a.locator(".status-badge")).to_have_text("MISSING")
+        playwright_api.expect(missing_a).to_contain_text("absent-a.png")
+        playwright_api.expect(missing_a).to_contain_text("Missing Brand A")
+        playwright_api.expect(missing_a).to_contain_text("No photo was uploaded")
+        playwright_api.expect(missing_a.locator(".flag")).to_have_count(1)
+
+        missing_b = worksheet_rows(page).nth(2)
+        playwright_api.expect(missing_b.locator(".status-badge")).to_have_text("MISSING")
+        playwright_api.expect(missing_b).to_contain_text("absent-b.png")
+
 
 class TestScanWithoutCsv:
     def test_multi_photo_scan_without_csv_flags_every_row(self, page, base_url):
