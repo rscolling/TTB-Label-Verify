@@ -6,6 +6,9 @@ Notable project changes, newest first.
 
 ## 2026-07-19 — QA hardening pass
 
+**Git:** `7b7106f` on `main`  
+**Commit:** `feat: QA hardening — limits, auth, required elements, US net contents`  
+
 **Commit scope:** implement actionable recommendations from [QA-REPORT.md](QA-REPORT.md) (summary, failure points, recommendations). Offline suite green after the change.
 
 ### Features
