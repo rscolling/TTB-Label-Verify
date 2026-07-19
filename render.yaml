@@ -1,0 +1,16 @@
+# Render Blueprint — deploy the prototype as a warm Docker web service.
+# New → Blueprint → connect this repo. Render builds the Dockerfile and injects
+# $PORT (the Dockerfile honors it). Set ANTHROPIC_API_KEY in the dashboard when
+# prompted (sync: false keeps it a secret, never in the repo).
+services:
+  - type: web
+    name: ttb-label-verify
+    runtime: docker
+    plan: starter          # warm — no cold-start delay on the first request
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false         # secret — entered in the dashboard, not committed
+      - key: BATCH_CONCURRENCY
+        value: "4"
