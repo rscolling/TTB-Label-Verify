@@ -43,6 +43,23 @@ class FakeExtractor:
         return self.result
 
 
+class FakeFormExtractor:
+    """Test double for the FormExtractor protocol (WP7 form ingestion)."""
+
+    def __init__(self, rows: list | None = None, error: Exception | None = None) -> None:
+        self.rows = rows if rows is not None else []
+        self.error = error
+        self.calls = 0
+        self.kinds: list[str] = []
+
+    def extract_rows(self, raw: bytes, kind: str) -> list:
+        self.calls += 1
+        self.kinds.append(kind)
+        if self.error is not None:
+            raise self.error
+        return self.rows
+
+
 @pytest.fixture
 def png_bytes() -> bytes:
     buffer = io.BytesIO()

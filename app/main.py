@@ -19,6 +19,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.batch import MAX_BATCH_SIZE, ManifestError, batch_concurrency, normalize_filename, parse_manifest
 from app.extraction import BadImageError, ClaudeExtractor, ExtractionError, Extractor, prepare_image
+from app.form_ingest import ClaudeFormExtractor, FormExtractor, FormIngestError, ingest_form
 from app.models import ApplicationData
 from app.rules import overall_status, verify
 
@@ -34,6 +35,12 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 def get_extractor() -> Extractor:
     """Default production extractor; tests override this dependency."""
     return ClaudeExtractor()
+
+
+@lru_cache(maxsize=1)
+def get_form_extractor() -> FormExtractor:
+    """Default production form extractor (PDF/photo forms); tests override this."""
+    return ClaudeFormExtractor()
 
 
 def _error(status_code: int, code: str, message: str) -> JSONResponse:
@@ -123,6 +130,33 @@ def verify_label(
         return _error(502, "extraction_failed", f"{exc} Please try again in a moment.")
     except NoLabelError:
         return _error(422, "no_label", NO_LABEL_MESSAGE)
+
+
+@app.post("/api/ingest-form", response_model=None)  # returns dict or error JSONResponse
+def ingest_form_endpoint(
+    file: UploadFile = File(...),
+    form_extractor: FormExtractor = Depends(get_form_extractor),
+) -> JSONResponse | dict[str, Any]:
+    """Read the submittal form (any supported format) into normalized rows.
+
+    Additive endpoint (WP7): the frozen /api/verify-batch contract is untouched
+    — the client previews these rows, then serializes them back to the
+    canonical CSV `manifest` field at scan time. Deterministic parsers handle
+    CSV/TSV/XLSX; PDF and photo forms go through the LLM document extractor
+    (perception only — verdicts stay deterministic). Nothing is persisted (R8).
+    """
+    raw = file.file.read()
+    try:
+        result = ingest_form(file.filename or "form", raw, form_extractor)
+    except FormIngestError as exc:
+        return _error(400, "bad_form", str(exc))
+    except ExtractionError as exc:
+        return _error(502, "form_extraction_failed", f"{exc} Please try again in a moment.")
+    return {
+        "rows": [asdict(row) for row in result.rows],
+        "source_kind": result.source_kind,
+        "warnings": result.warnings,
+    }
 
 
 def _batch_error_entry(filename: str, code: str, message: str) -> dict[str, Any]:
