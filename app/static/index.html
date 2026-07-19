@@ -22,7 +22,7 @@
   <main class="wrap">
     <form id="scan-form" novalidate>
       <section class="card" aria-labelledby="upload-heading">
-        <h2 id="upload-heading"><span class="step-num" aria-hidden="true">1</span> Add the label photos</h2>
+        <h2 id="upload-heading" tabindex="-1"><span class="step-num" aria-hidden="true">1</span> Add the label photos</h2>
         <div id="dropzone" class="dropzone">
           <input type="file" id="file-input" accept="image/png,image/jpeg,image/webp,image/*"
                  multiple class="visually-hidden">
@@ -94,6 +94,14 @@
         </div>
       </section>
     </form>
+
+    <!-- Review mode (WP8): once a scan completes the upload form above hides
+         and this slim recap bar takes its place — the banner + worksheet
+         below become the page. -->
+    <div id="recap-bar" class="recap-bar" hidden>
+      <p id="recap-text" class="recap-text"></p>
+      <button type="button" id="new-scan" class="button button-secondary">Start a new scan</button>
+    </div>
 
     <div id="status" class="status" aria-live="polite">
       <div id="match-notice" class="callout callout-info" hidden></div>
