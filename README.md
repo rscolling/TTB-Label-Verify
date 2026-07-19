@@ -133,6 +133,24 @@ python eval/run_eval.py      # full 16-label eval against ground truth
 | `BATCH_CONCURRENCY` | `4` | How many labels are processed in parallel during a batch. |
 | `EXTRACTION_MODEL` | `claude-sonnet-5` | Model used for label extraction and PDF/photo form reading. `claude-haiku-4-5-20251001` measured faster on the eval set, with trade-offs documented in [APPROACH.md](APPROACH.md). |
 
+## Deployment
+
+The live demo runs on [Render](https://render.com) from
+[`render.yaml`](render.yaml) — a blueprint that builds the [Dockerfile](Dockerfile)
+as a warm Starter web service (no cold-start on the first request) with a
+`/api/health` check. To deploy your own:
+
+1. **New → Blueprint** in the Render dashboard and connect this repo. Render
+   reads `render.yaml` and provisions one service, `ttb-label-verify`.
+2. When prompted, paste your key into **`ANTHROPIC_API_KEY`** (marked
+   `sync: false`, so it stays a dashboard secret, never in the repo).
+3. **Apply.** First Docker build takes ~2-3 min; every push to `main`
+   redeploys automatically.
+
+The container binds `$PORT` (with a `8000` fallback), so the same image runs
+unchanged on Render, Cloud Run, or a plain `docker run`. Nothing is persisted
+server-side, so the service is stateless and horizontally scalable as-is.
+
 ## Repo layout
 
 | Path | Contents |
