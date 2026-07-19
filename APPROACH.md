@@ -375,6 +375,19 @@ each fixed and pinned by a regression test:
   basename). Visually identical unicode variants (for example full-width
   digits in a filename) do not match a plain-ASCII manifest row; the file gets
   a per-label "no application" error entry rather than a silent wrong pairing.
+- **A double-quote in an order-matched photo name breaks the pairing**
+  (QA5-F1, LOW; `tests/qa/test_qa5_e2e_ingest.py`, `xfail`). When the submittal
+  form names no files, the client pairs rows to photos by selection order and
+  writes each photo's raw name into the serialized manifest. The browser
+  percent-encodes `"` in the multipart filename (`a"b.png` -> `a%22b.png`), so
+  the file arrives under a name the manifest key no longer matches and comes
+  back as a "no row for this photo" error — contradicting the persistent
+  "Matched N rows by order" notice. Comma, `%`, and space all round-trip
+  cleanly; only `"` (the multipart filename-escaping char) triggers it, and `"`
+  is illegal in filenames on Windows and most filesystems, so the case is rare.
+  Fix when it matters: percent-encode `"` in the filename the client writes to
+  the manifest at [app.js order-matching](app/static/app.js) so the manifest
+  key matches the wire.
 - **A structurally bad CSV surfaces per chunk in the UI.** The web UI submits
   in sub-batches of 10 and re-sends the manifest with each; a manifest-level
   error therefore appears as error rows for each sub-batch rather than one

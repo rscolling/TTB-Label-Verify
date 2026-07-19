@@ -8,9 +8,13 @@ applicant sent. This module is the dispatch layer:
 - ``.pdf`` / ``.png`` / ``.jpg``   -> ``ClaudeFormExtractor`` (LLM document
   extraction — perception only; every verdict downstream stays deterministic)
 
-Detection uses BOTH the file extension and the content's magic bytes: a PDF
-renamed ``.csv`` still routes to the PDF path, and a PNG renamed ``.xlsx`` is
-rejected with a friendly message instead of an openpyxl traceback.
+Detection uses BOTH the file extension and the content's magic bytes, and
+content wins: a PDF renamed ``.csv`` still routes to the PDF path, and a PNG
+renamed ``.xlsx`` is treated as a PHOTO of the form (image-LLM path) on its
+magic bytes, not rejected — content-is-truth, consistent with the PDF case.
+A file whose extension claims ``.xlsx`` but that is *not* a zip container does
+get the friendly "not a real Excel workbook" reject instead of an openpyxl
+traceback.
 
 Every format normalizes to the same row shape (the batch-manifest columns) plus
 a ``source_kind`` tag and a warnings list (e.g. "no filename column — rows will

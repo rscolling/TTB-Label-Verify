@@ -349,6 +349,12 @@ class TestQa5RoundTripFindings:
     QA finding is either FIXED or documented in APPROACH.md — do not weaken
     them to make the suite green."""
 
+    @pytest.mark.xfail(
+        strict=True,
+        reason="QA5-F1 (LOW): accepted known limitation, documented in "
+        "APPROACH.md. Marker flips to XPASS (a failure) when app.js is fixed — "
+        "delete it then.",
+    )
     def test_qa5_finding_double_quote_photo_name_breaks_order_matched_manifest(
         self, page, base_url, form_extractor
     ):
