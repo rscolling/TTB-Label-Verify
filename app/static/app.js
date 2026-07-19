@@ -246,8 +246,7 @@
   var filterGroup = document.getElementById("filter-group");
   var FILTER_BUCKETS = {
     passed: { pass: true, approved: true },
-    failed: { fail: true, denied: true },
-    review: { review: true, error: true, missing: true }
+    failed: { fail: true, denied: true }
   };
   var activeFilter = "all";
 
@@ -867,6 +866,28 @@
 
   /* ---------- review drill-down panel ---------- */
 
+  /* Click-to-enlarge lightbox for the label photo: one native <dialog>,
+     reused. Esc and any click close it. */
+  var lightbox = document.createElement("dialog");
+  lightbox.className = "lightbox";
+  var lightboxClose = document.createElement("button");
+  lightboxClose.type = "button";
+  lightboxClose.className = "lightbox-close";
+  lightboxClose.setAttribute("aria-label", "Close the enlarged photo");
+  lightboxClose.textContent = "✕";
+  lightbox.appendChild(lightboxClose);
+  var lightboxImg = document.createElement("img");
+  lightboxImg.alt = "";
+  lightbox.appendChild(lightboxImg);
+  lightbox.addEventListener("click", function () { lightbox.close(); });
+  document.body.appendChild(lightbox);
+
+  function openLightbox(src, alt) {
+    lightboxImg.src = src;
+    lightboxImg.alt = alt || "";
+    lightbox.showModal();
+  }
+
   function closeDetailPanel(refocus) {
     if (!openDetail) { return; }
     var closing = openDetail;
@@ -989,11 +1010,11 @@
 
   function comparisonTable(row) {
     var flagged = STATUSES[row.status].flagged;
-    var columnCount = flagged ? 6 : 5;
+    var columnCount = flagged ? 5 : 4;
     var table = document.createElement("table");
     table.className = "detail-table";
     var head = document.createElement("tr");
-    var headers = ["What we checked", "Submittal form says", "Scan found", "Result", "Explanation"];
+    var headers = ["What we checked", "Submittal form says", "Scan found", "Result"];
     if (flagged) { headers.push("Your check"); }
     headers.forEach(function (title) {
         var th = document.createElement("th");
@@ -1003,7 +1024,7 @@
       });
     table.appendChild(head);
 
-    var CELL_LABELS = ["", "Submittal form says", "Scan found", "Result", "Explanation"];
+    var CELL_LABELS = ["", "Submittal form says", "Scan found"];
     FIELD_ORDER.forEach(function (key) {
       var field = row.entry.fields[key];
       if (!field) { return; }
@@ -1012,19 +1033,29 @@
       var cells = [
         FIELD_NAMES[key] || key,
         noData ? "— (no submittal data)" : comparisonValue(field.expected),
-        comparisonValue(field.extracted),
-        mark.icon + " " + mark.text,
-        noData ? NO_DATA_TEXT + "." : (field.reason || "")
+        comparisonValue(field.extracted)
       ];
       var trEl = document.createElement("tr");
       cells.forEach(function (value, index) {
         var td = document.createElement("td");
         td.textContent = value;
         if (index === 0) { td.className = "field-name"; }
-        if (index === 3) { td.className = "verdict " + mark.cls; }
         if (CELL_LABELS[index]) { td.setAttribute("data-label", CELL_LABELS[index]); }
         trEl.appendChild(td);
       });
+      // Result cell: the verdict, with the explanation folded in underneath.
+      var resultTd = document.createElement("td");
+      resultTd.className = "verdict " + mark.cls;
+      resultTd.setAttribute("data-label", "Result");
+      resultTd.textContent = mark.icon + " " + mark.text;
+      var reasonText = noData ? NO_DATA_TEXT + "." : (field.reason || "");
+      if (reasonText) {
+        var reasonP = document.createElement("p");
+        reasonP.className = "verdict-reason muted";
+        reasonP.textContent = reasonText;
+        resultTd.appendChild(reasonP);
+      }
+      trEl.appendChild(resultTd);
       if (flagged) { trEl.appendChild(checkCell(row, key)); }
       table.appendChild(trEl);
 
@@ -1165,9 +1196,20 @@
     var img = document.createElement("img");
     img.src = row.url;
     img.alt = "The label photo for row " + row.serial;
-    figure.appendChild(img);
+    if (row.url) {
+      var zoom = document.createElement("button");
+      zoom.type = "button";
+      zoom.className = "photo-zoom";
+      zoom.title = "Click to enlarge";
+      zoom.setAttribute("aria-label", "Enlarge the label photo for row " + row.serial);
+      zoom.appendChild(img);
+      zoom.addEventListener("click", function () { openLightbox(row.url, img.alt); });
+      figure.appendChild(zoom);
+    } else {
+      figure.appendChild(img);
+    }
     var caption = document.createElement("figcaption");
-    caption.textContent = "The photo we scanned";
+    caption.textContent = row.url ? "The photo we scanned — click to enlarge" : "The photo we scanned";
     figure.appendChild(caption);
     layout.appendChild(figure);
 
@@ -1180,10 +1222,15 @@
       callout.textContent = "Couldn't scan this photo — " + row.entry.error.message;
       body.appendChild(callout);
     } else {
-      body.appendChild(comparisonTable(row));
+      // The comparison scrolls freely in its own box (both axes) so no cell
+      // is ever clipped; the photo column stays put alongside.
+      var scroll = document.createElement("div");
+      scroll.className = "detail-scroll";
+      scroll.appendChild(comparisonTable(row));
       if (row.requiredMissing && row.requiredMissing.length > 0) {
-        body.appendChild(requiredMissingBlock(row));
+        scroll.appendChild(requiredMissingBlock(row));
       }
+      body.appendChild(scroll);
     }
     layout.appendChild(body);
     panel.appendChild(layout);

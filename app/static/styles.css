@@ -378,9 +378,17 @@ main { padding-top: 2rem; }
   margin-bottom: 1rem;
 }
 
-.worksheet-hint { margin: 0; color: var(--ink-soft); font-size: 0.95rem; }
+.worksheet-hint { margin: 0; color: var(--ink-soft); font-size: 0.95rem; flex: 1; }
 
-.filter-group { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.filter-group {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+  margin-right: 1.5rem;
+}
+
+#download-csv { flex-shrink: 0; }
 
 .filter-button.is-active {
   background: var(--accent);
@@ -422,7 +430,7 @@ main { padding-top: 2rem; }
 }
 
 /* Per-field Confirm / Update checks in the drill-down table. */
-.check-cell { min-width: 12rem; }
+.check-cell { min-width: 11rem; }
 
 .check-option {
   display: block;
@@ -636,13 +644,81 @@ main { padding-top: 2rem; }
   align-items: start;
 }
 
-.detail-figure { margin: 0; text-align: center; }
+/* The photo stays put while the comparison scrolls beside it. */
+.detail-figure {
+  margin: 0;
+  text-align: center;
+  position: sticky;
+  top: 1rem;
+}
 
 .detail-figure img {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fff;
+}
+
+.photo-zoom {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: zoom-in;
+}
+
+.photo-zoom:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* Enlarged photo popout (native <dialog>; Esc or click closes). */
+.lightbox {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  max-width: none;
+  max-height: none;
+}
+
+.lightbox::backdrop { background: rgba(0, 0, 0, 0.72); }
+
+.lightbox-close {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  width: 2.4rem;
+  height: 2.4rem;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.lightbox-close:hover { background: rgba(0, 0, 0, 0.85); }
+
+.lightbox-close:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.lightbox img {
+  display: block;
+  max-width: 92vw;
+  max-height: 92vh;
+  border-radius: 8px;
+  background: #fff;
+  cursor: zoom-out;
+}
+
+/* Free-scrolling comparison area — nothing gets clipped. */
+.detail-scroll {
+  overflow: auto;
+  max-height: 70vh;
 }
 
 .detail-figure figcaption {
@@ -680,6 +756,14 @@ main { padding-top: 2rem; }
 .field-name { font-weight: 600; }
 
 .verdict { font-weight: 700; white-space: nowrap; }
+
+/* The explanation, folded under the verdict in the Result cell. */
+.verdict-reason {
+  margin: 0.25rem 0 0;
+  font-weight: 400;
+  white-space: normal;
+  font-size: 0.9rem;
+}
 
 .muted { color: var(--ink-soft); }
 
