@@ -86,8 +86,12 @@ flags the row for review — not failure, since net contents or the producer
 statement may be embossed on the container and the warning may sit on another
 label of the set. Details and citations are in [APPROACH.md](APPROACH.md).
 
-Submittal-form CSV format (`brand` required, the rest optional — `filename`
-recommended so rows match photos by name):
+Whatever format the submittal form arrives in — CSV, TSV, Excel (`.xlsx`), a
+PDF, or a photo — it is read and normalized into one canonical column set:
+spreadsheets are parsed directly (case-insensitive header aliases), PDFs and
+photos are transcribed by the document reader. Those columns (`brand` required,
+the rest optional — `filename` recommended so rows match photos by name), shown
+here as the CSV a spreadsheet export produces:
 
 ```csv
 filename,brand,class_type,abv,net_contents,producer,origin_country,is_import
@@ -104,9 +108,9 @@ playwright install chromium      # once, for the browser E2E tests
 pytest
 ```
 
-The offline suite (403 tests, about 35 seconds) covers the rules engine, the
+The offline suite (442 tests, about 40 seconds) covers the rules engine, the
 form-ingestion parsers, the API with mocked extractors, real-browser E2E of
-the worksheet flow against a fake backend, and four adversarial QA gates. It
+the worksheet flow against a fake backend, and five adversarial QA gates. It
 never touches the network and needs no API key.
 
 Two paths need a real `ANTHROPIC_API_KEY`:

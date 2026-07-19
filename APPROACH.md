@@ -133,9 +133,9 @@ payloads, no retry for permanent 4xx — is a small hand-written loop.
 **Deterministic rules, not LLM-as-judge.** Verdicts must be reproducible
 (same label, same answer, every time), auditable (an agent can read
 `app/rules/warning.py` and see exactly why title case fails), cheap (no second
-model call per field), and testable (the matchers carry 403 offline tests). A
+model call per field), and testable (the matchers carry 442 offline tests). A
 rule change is a reviewable code diff, not prompt drift. The rules engine and
-its callers are pinned by the 403-test offline suite. The model does the one
+its callers are pinned by the 442-test offline suite. The model does the one
 thing code cannot: read a photograph.
 
 **Extraction model choice.** `EXTRACTION_MODEL` (default `claude-sonnet-5`)
@@ -196,7 +196,7 @@ domains — is answered by a seam, not a rewrite:
   TTB's tenant means implementing that protocol against an Azure OpenAI
   vision deployment in the FedRAMP boundary, or a locally hosted vision
   model — one class, zero changes to the rules engine, API, or UI.
-- The offline test suite already proves the swap: 403 tests run the full app
+- The offline test suite already proves the swap: 442 tests run the full app
   against a substitute extractor with no outbound traffic at all.
 
 ## What this grows into
@@ -237,7 +237,7 @@ already goes through.
 
 ## Testing and verification
 
-403 tests pass offline in about 35 seconds (`pytest`), plus one key-gated live
+442 tests pass offline in about 40 seconds (`pytest`), plus one key-gated live
 test (`pytest -m live`). Levels:
 
 | Level | What | Where |
@@ -245,7 +245,7 @@ test (`pytest -m live`). Levels:
 | Unit | Every field matcher and parser: ABV/proof variants, unit conversions, warning normalization and caps check, fuzzy thresholds, N/A logic | `tests/test_alcohol.py`, `test_net_contents.py`, `test_warning.py`, `test_text_match.py`, `test_producer.py`, `test_origin.py`, `test_engine.py` |
 | API | FastAPI endpoints via TestClient with a mocked extractor: happy paths, every error path, batch partial-failure semantics | `tests/test_api.py`, `tests/test_batch_api.py`, `tests/test_ui.py` |
 | Browser E2E | Real headless Chromium (Playwright) against the real app with a fake backend: the worksheet flow with and without a submittal CSV, serials/timestamps/Time column, review drill-down and clause diff as prose, error recovery, progress and CSV export | `tests/test_e2e_ui.py`, `tests/test_e2e_batch_ui.py` |
-| Adversarial QA | Independent suites in `tests/qa/` (never edited by the build side) | 4 QA gates, ~40% of the suite |
+| Adversarial QA | Independent suites in `tests/qa/` (never edited by the build side) | 5 QA gates, ~40% of the suite |
 | Eval harness | 16 synthetic labels with ground-truth verdicts through the real pipeline | `eval/run_eval.py` (key-gated); its comparison logic is itself unit-tested offline in `tests/test_run_eval.py` |
 | Live smoke | One real vision call through the full pipeline | `pytest -m live` |
 
