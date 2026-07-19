@@ -181,18 +181,16 @@ class TestQa5SizeAbuse:
         assert response.status_code == 200
         assert response.json()["rows"][0]["producer"] == giant
 
-    def test_qa5_pdf_over_10mb_is_handled_gracefully(self, make_ingest_client):
-        """No size cap is enforced today: the upload must at least route
-        cleanly to the extractor (graceful handling), never crash. The absence
-        of a friendly pre-flight cap is noted in the QA report — a real >10MB
-        PDF would only fail later at the model API."""
+    def test_qa5_pdf_over_10mb_is_handled_gracefully(self, make_ingest_client, monkeypatch):
+        """Size cap (QA P0-1): oversize forms get a friendly 413 before spend."""
+        monkeypatch.setenv("MAX_FORM_BYTES", str(5 * 1024 * 1024))
         fake = FakeFormExtractor(rows=[FormRow(filename="a.png", brand="Big Form")])
         client = make_ingest_client(fake)
         big_pdf = b"%PDF-1.4\n" + b"0" * (11 * 1024 * 1024)
         response = post_form(client, "huge.pdf", big_pdf, "application/pdf")
-        assert response.status_code == 200
-        assert fake.kinds == ["pdf"]
-        assert response.json()["rows"][0]["brand"] == "Big Form"
+        assert response.status_code == 413
+        assert response.json()["error"]["code"] == "payload_too_large"
+        assert fake.calls == 0
 
 
 # ---------------------------------------------------------------------------

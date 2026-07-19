@@ -349,30 +349,12 @@ class TestQa5RoundTripFindings:
     QA finding is either FIXED or documented in APPROACH.md — do not weaken
     them to make the suite green."""
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="QA5-F1 (LOW): accepted known limitation, documented in "
-        "APPROACH.md. Marker flips to XPASS (a failure) when app.js is fixed — "
-        "delete it then.",
-    )
     def test_qa5_finding_double_quote_photo_name_breaks_order_matched_manifest(
         self, page, base_url, form_extractor
     ):
-        """QA5-F1 (LOW): a photo whose file name contains a double-quote (`"`)
-        is order-matched to a form row and the raw name is written into the
-        client-serialized manifest CSV verbatim. But the browser percent-
-        encodes `"` in the multipart Content-Disposition filename, so the same
-        file arrives at /api/verify-batch as e.g. `a%22b.png`. The manifest key
-        (`a"b.png`) and the uploaded name (`a%22b.png`) then normalize
-        differently, so the photo gets a "no row for this photo" ERROR entry —
-        directly contradicting the persistent "Matched 2 rows to 2 photos by
-        order" success notice. Isolation: comma, `%`, and space all round-trip
-        cleanly; only `"` triggers it (the multipart filename-escaping char).
-
-        A verdict surface must not promise a pairing it then fails to honor.
-        Correct behavior: the order-matched photo is verified against its row
-        (no error entry), OR the client normalizes the manifest filename the
-        same way the wire will (percent-encoding `"`)."""
+        """QA5-F1 (FIXED): order-matched photos with `"` in the name write a
+        wire-safe (`%22`) filename into the serialized manifest so it matches
+        the browser's multipart Content-Disposition encoding."""
         form_extractor.delegate = FakeFormExtractor(rows=[
             FormRow(brand="First Brand"), FormRow(brand="Second Brand"),
         ])

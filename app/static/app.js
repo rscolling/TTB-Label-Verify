@@ -146,9 +146,24 @@
   }
 
   /* -> [{key, name, reason}] for the required elements NOT found on the label
-     in this photo. Empty for error entries. */
+     in this photo. Empty for error entries.
+     Prefer the server's required_elements payload (QA P1-4) so API and UI agree;
+     fall back to the local check for older responses. */
   function missingRequired(entry) {
     if (entry.error) { return []; }
+    if (entry.required_elements && Array.isArray(entry.required_elements.missing)) {
+      return entry.required_elements.missing.map(function (element) {
+        return {
+          key: element.key,
+          name: element.name,
+          reason: element.reason || REQUIRED_MISSING_TEXT
+        };
+      }).filter(function (element) {
+        // Client UI only marks the seven worksheet fields; disclosure hints
+        // (sulfites, etc.) stay out of per-cell marks.
+        return FIELD_ORDER.indexOf(element.key) !== -1;
+      });
+    }
     var classField = entry.fields.class_type || {};
     var family = classFamily(classField.expected || classField.extracted);
     var required = CORE_REQUIRED.slice();
@@ -533,9 +548,17 @@
     return (entry.processing_time_ms / 1000).toFixed(1);
   }
 
-  function elapsedSecondsText(entry) {   // "4.9s" or null
+  function elapsedSecondsText(entry) {   // "4.9s" or "6.2s (over 5s budget)" or null
     var value = elapsedSecondsValue(entry);
-    return value === null ? null : value + "s";
+    if (value === null) { return null; }
+    var over = entry && typeof entry.processing_time_ms === "number" &&
+      entry.processing_time_ms > 5000;
+    return over ? value + "s (over 5s budget)" : value + "s";
+  }
+
+  function isOverBudget(entry) {
+    return !!(entry && typeof entry.processing_time_ms === "number" &&
+      entry.processing_time_ms > 5000);
   }
 
   /* ---------- row scoring (client-derived; API shapes untouched) ---------- */
@@ -679,9 +702,12 @@
     tr.appendChild(timeTd);
 
     var elapsedTd = document.createElement("td");
-    elapsedTd.className = "elapsed-cell";
+    elapsedTd.className = "elapsed-cell" + (isOverBudget(row.entry) ? " over-budget" : "");
     elapsedTd.setAttribute("data-label", "Time");
     elapsedTd.textContent = elapsedSecondsText(row.entry) || "—";
+    if (isOverBudget(row.entry)) {
+      elapsedTd.title = "This label took longer than the 5 second target (R2).";
+    }
     tr.appendChild(elapsedTd);
 
     var photoTd = document.createElement("td");
@@ -1008,7 +1034,10 @@
   }
 
   function buildCsv(exportRows) {
-    var header = ["serial", "filename", "scan_timestamp", "processing_seconds", "pass_fail", "score"];
+    var header = [
+      "serial", "filename", "scan_timestamp", "processing_seconds",
+      "over_5s_budget", "pass_fail", "score", "required_missing", "reviewer_note"
+    ];
     FIELD_ORDER.forEach(function (key) {
       header.push(key + "_verdict");
       header.push(key + "_reason");
@@ -1017,13 +1046,17 @@
 
     var lines = [header.map(csvCell).join(",")];
     exportRows.forEach(function (row) {
+      var missingKeys = (row.requiredMissing || []).map(function (e) { return e.key; }).join(";");
       var cells = [
         row.serial,
         row.filename,
         isoStamp(row.scannedAt),
         elapsedSecondsValue(row.entry) || "",
+        isOverBudget(row.entry) ? "yes" : "no",
         STATUSES[row.status].badge,
-        csvScore(row)
+        csvScore(row),
+        missingKeys,
+        ""  // reviewer_note: fill in spreadsheet for local audit trail (R8: nothing stored server-side)
       ];
       FIELD_ORDER.forEach(function (key) {
         // Required-elements misses ride the EXISTING verdict/reason columns
@@ -1155,8 +1188,15 @@
     return lines.join("\r\n") + "\r\n";
   }
 
-  function normalizeName(name) {  // mirror of the server's normalize_filename
-    return String(name || "").trim().replace(/\\/g, "/").split("/").pop().toLowerCase();
+  /* Browser percent-encodes " in multipart Content-Disposition filenames
+     (a"b.png -> a%22b.png). Manifest keys must match the wire name (QA5-F1). */
+  function wireSafeFilename(name) {
+    return String(name || "").replace(/"/g, "%22");
+  }
+
+  function normalizeName(name) {  // mirror of the server's normalize_filename + wire-safe
+    var base = String(name || "").trim().replace(/\\/g, "/").split("/").pop();
+    return wireSafeFilename(base).toLowerCase();
   }
 
   function plural(count, word) {
@@ -1234,8 +1274,10 @@
           seen[key] = true;
         }
         unnamed.forEach(function (row, index) {
-          row.filename = leftoverPhotos[index].name;
-          claimed[normalizeName(row.filename)] = true;
+          // Write the wire-safe name into the manifest so it matches what the
+          // browser will send in multipart (QA5-F1).
+          row.filename = wireSafeFilename(leftoverPhotos[index].name);
+          claimed[normalizeName(leftoverPhotos[index].name)] = true;
         });
         notice = "Matched " + plural(unnamed.length, "row") + " to " +
           plural(unnamed.length, "photo") + " by order — check the pairings in the worksheet.";

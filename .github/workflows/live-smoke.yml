@@ -1,0 +1,32 @@
+# Optional scheduled live smoke (QA P3-13).
+# Requires repository secrets: ANTHROPIC_API_KEY
+# Does not run on every PR — keeps offline CI free.
+
+name: Live smoke
+
+on:
+  schedule:
+    - cron: "0 14 * * 1"  # Mondays 14:00 UTC
+  workflow_dispatch:
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    if: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Live API smoke (one label path)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: pytest -q -m live
+
+      - name: Form eval (deterministic fixtures)
+        run: python eval/run_form_eval.py

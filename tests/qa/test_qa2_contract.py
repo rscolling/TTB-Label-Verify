@@ -10,7 +10,8 @@ from __future__ import annotations
 
 from tests.conftest import FakeExtractor
 
-SUCCESS_TOP_KEYS = {"overall_status", "processing_time_ms", "fields"}
+# required_elements is additive (QA P1-4 server-side completeness check).
+SUCCESS_TOP_KEYS = {"overall_status", "processing_time_ms", "fields", "required_elements"}
 FIELD_KEYS = {
     "field",
     "verdict",
@@ -49,6 +50,8 @@ class TestSuccessShapeLocked:
         assert set(body) == SUCCESS_TOP_KEYS
         assert isinstance(body["processing_time_ms"], int)
         assert body["overall_status"] in {"match", "review", "mismatch"}
+        assert "missing" in body["required_elements"]
+        assert "family" in body["required_elements"]
         for name, field in body["fields"].items():
             assert set(field) == FIELD_KEYS, name
             assert field["verdict"] in {"match", "review", "mismatch", "na"}, name

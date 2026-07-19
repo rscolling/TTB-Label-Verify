@@ -1,13 +1,14 @@
-fastapi>=0.115
-uvicorn[standard]>=0.30
-anthropic>=0.40
-rapidfuzz>=3.9
-pillow>=10.4
-openpyxl>=3.1
-python-dotenv>=1.0
-python-multipart>=0.0.9
+# Runtime (pinned for deploy reproducibility — QA P3-14)
+fastapi>=0.115,<1
+uvicorn[standard]>=0.30,<1
+anthropic>=0.40,<1
+rapidfuzz>=3.9,<4
+pillow>=10.4,<12
+openpyxl>=3.1,<4
+python-dotenv>=1.0,<2
+python-multipart>=0.0.9,<1
 
 # test
-pytest>=8.2
-httpx>=0.27
-playwright>=1.45  # L4 browser E2E; run `playwright install chromium` once
+pytest>=8.2,<10
+httpx>=0.27,<1
+playwright>=1.45,<2  # L4 browser E2E; run `playwright install chromium` once

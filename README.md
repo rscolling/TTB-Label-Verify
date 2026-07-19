@@ -132,6 +132,11 @@ python eval/run_eval.py      # full 16-label eval against ground truth
 | `ANTHROPIC_API_KEY` | (none) | Server-side only; required for real label extraction. Never sent to the browser. |
 | `BATCH_CONCURRENCY` | `4` | How many labels are processed in parallel during a batch. |
 | `EXTRACTION_MODEL` | `claude-sonnet-5` | Model used for label extraction and PDF/photo form reading. `claude-haiku-4-5-20251001` measured faster on the eval set, with trade-offs documented in [APPROACH.md](APPROACH.md). |
+| `VERIFY_API_KEY` | (none) | Optional. When set, `/api/verify*` and `/api/ingest-form` require `X-API-Key` (or Bearer). Health + UI stay open. |
+| `RATE_LIMIT_PER_MINUTE` | `0` (off) | Optional per-IP cap on protected API routes. |
+| `MAX_IMAGE_BYTES` | `40MB` | Per-photo upload cap (friendly 413 when exceeded). |
+| `MAX_FORM_BYTES` | `20MB` | Submittal-form / manifest upload cap. |
+| `MAX_BATCH_TOTAL_BYTES` | `200MB` | Total bytes across one batch request. |
 
 ## Deployment
 
@@ -158,4 +163,4 @@ server-side, so the service is stateless and horizontally scalable as-is.
 | `app/` | FastAPI app, extraction seam, rules engine, static UI |
 | `eval/` | Synthetic 16-label test set, generator, manifest, eval harness |
 | `tests/` | Offline test suite; `tests/qa/` is the independent adversarial QA suite |
-| `docs/` | Build spec, test plan, screenshots |
+| `docs/` | Build spec, test plan, QA report, screenshots |

@@ -40,7 +40,19 @@ class TestHealth:
         client = make_client(FakeExtractor())
         response = client.get("/api/health")
         assert response.status_code == 200
-        assert response.json() == {"status": "ok"}
+        body = response.json()
+        assert body["status"] == "ok"
+        assert "api_key_configured" in body
+        assert "auth_required" in body
+
+    def test_health_deep_includes_checks(self, make_client):
+        client = make_client(FakeExtractor())
+        response = client.get("/api/health", params={"deep": "true"})
+        assert response.status_code == 200
+        body = response.json()
+        assert body["status"] == "ok"
+        assert "checks" in body
+        assert "max_image_bytes" in body["checks"]
 
 
 class TestVerifyHappyPath:

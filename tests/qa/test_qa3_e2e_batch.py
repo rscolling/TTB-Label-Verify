@@ -65,9 +65,9 @@ CSV_FIELDS = [
     "brand", "class_type", "abv", "net_contents",
     "producer", "origin_country", "government_warning",
 ]
-# serial, filename, scan_timestamp, processing_seconds, pass_fail, score,
-# 7 x (verdict, reason), error
-EXPECTED_COLUMNS = 6 + 7 * 2 + 1
+# serial, filename, scan_timestamp, processing_seconds, over_5s_budget,
+# pass_fail, score, required_missing, reviewer_note, 7 x (verdict, reason), error
+EXPECTED_COLUMNS = 9 + 7 * 2 + 1
 
 # A submittal row body filling every column, import checked.
 FULL_ROW_BODY = "Legit Brand,Bourbon,45%,750 mL,Distiller Co.,France,true"
@@ -248,9 +248,9 @@ class TestQa3CsvExportAttacks:
 
         rows = list(csv.reader(io.StringIO(text)))
         header = rows[0]
-        assert header[:6] == [
+        assert header[:9] == [
             "serial", "filename", "scan_timestamp", "processing_seconds",
-            "pass_fail", "score",
+            "over_5s_budget", "pass_fail", "score", "required_missing", "reviewer_note",
         ]
         for field in CSV_FIELDS:
             assert f"{field}_verdict" in header, field
@@ -282,8 +282,10 @@ class TestQa3CsvExportAttacks:
             assert datetime.fromisoformat(row[2]).year >= 2026
             assert CSV_SECONDS_RE.match(row[seconds_at]), row[seconds_at]
             assert 0.0 <= float(row[seconds_at]) < 60.0, row[seconds_at]
-            assert row[4] == "REVIEW"  # no submittal data — never a silent pass
-            assert row[5] == ""        # no fabricated score without submittal data
+            pass_at = header.index("pass_fail")
+            score_at = header.index("score")
+            assert row[pass_at] == "REVIEW"  # no submittal data — never a silent pass
+            assert row[score_at] == ""        # no fabricated score without submittal data
             assert row[brand_verdict_at] == "no_submittal_data"
 
     def test_qa3_error_message_with_newline_and_quotes_survives_export(

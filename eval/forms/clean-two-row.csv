@@ -1,0 +1,3 @@
+filename,brand,class_type,abv,net_contents,producer,origin_country,is_import
+bourbon.png,Copper Hollow,Kentucky Straight Bourbon Whiskey,45%,750 mL,"Copper Hollow Distilling Co., Bardstown KY",,false
+gin.png,Juniper Gate,London Dry Gin,47%,700 mL,"Juniper Gate Distillery, London",England,true

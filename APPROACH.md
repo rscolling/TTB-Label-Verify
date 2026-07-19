@@ -375,19 +375,10 @@ each fixed and pinned by a regression test:
   basename). Visually identical unicode variants (for example full-width
   digits in a filename) do not match a plain-ASCII manifest row; the file gets
   a per-label "no application" error entry rather than a silent wrong pairing.
-- **A double-quote in an order-matched photo name breaks the pairing**
-  (QA5-F1, LOW; `tests/qa/test_qa5_e2e_ingest.py`, `xfail`). When the submittal
-  form names no files, the client pairs rows to photos by selection order and
-  writes each photo's raw name into the serialized manifest. The browser
-  percent-encodes `"` in the multipart filename (`a"b.png` -> `a%22b.png`), so
-  the file arrives under a name the manifest key no longer matches and comes
-  back as a "no row for this photo" error — contradicting the persistent
-  "Matched N rows by order" notice. Comma, `%`, and space all round-trip
-  cleanly; only `"` (the multipart filename-escaping char) triggers it, and `"`
-  is illegal in filenames on Windows and most filesystems, so the case is rare.
-  Fix when it matters: percent-encode `"` in the filename the client writes to
-  the manifest at [app.js order-matching](app/static/app.js) so the manifest
-  key matches the wire.
+- **Double-quote in order-matched photo names (QA5-F1) — FIXED.** The client
+  now writes a wire-safe filename (`"` → `%22`) into the serialized manifest
+  and normalizes match keys the same way, so order-matched pairing survives
+  multipart Content-Disposition encoding (`tests/qa/test_qa5_e2e_ingest.py`).
 - **A structurally bad CSV surfaces per chunk in the UI.** The web UI submits
   in sub-batches of 10 and re-sends the manifest with each; a manifest-level
   error therefore appears as error rows for each sub-batch rather than one
@@ -410,6 +401,23 @@ each fixed and pinned by a regression test:
   memory for the request). The UI's 10-file chunking keeps real usage small;
   a production system would stream to bounded temp storage — deliberately not
   done here to honor the no-storage constraint.
+- **Upload size caps (QA P0-1).** Per-photo / form / batch-total byte limits
+  (`MAX_IMAGE_BYTES`, `MAX_FORM_BYTES`, `MAX_BATCH_TOTAL_BYTES`) reject oversized
+  payloads with a friendly 413 before extraction spend. Defaults are generous
+  enough for phone photos and the adversarial large-PNG downscale test.
+- **Optional API key + rate limit (QA P0-2).** Set `VERIFY_API_KEY` and/or
+  `RATE_LIMIT_PER_MINUTE` to harden a public demo. `/api/health` and the UI
+  stay open for probes.
+- **Server-side required-elements (QA P1-4).** Responses include
+  `required_elements` and overall status upgrades match→review when core
+  TTB elements are missing from the photo (`app/rules/required_elements.py`).
+- **American standard net contents (QA P1-6).** Pint, quart, and compound
+  statements like `1 PT. 6 FL. OZ.` parse to mL alongside metric units.
+- **Label-set merge is library-only (QA P2-8).** `app/rules/label_set.py`
+  best-of merges multi-image extractions; the HTTP API still maps one row per
+  photo until a submission-grouping UI ships.
+- **CSV export is the local audit trail (R8).** Columns include `over_5s_budget`,
+  `required_missing`, and a blank `reviewer_note` for agents to fill offline.
 
 ## Tools
 

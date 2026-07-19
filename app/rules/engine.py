@@ -12,6 +12,11 @@ from app.rules.alcohol import match_alcohol
 from app.rules.net_contents import match_net_contents
 from app.rules.origin import match_origin
 from app.rules.producer import match_producer
+from app.rules.required_elements import (
+    apply_required_to_status,
+    missing_required,
+    required_elements_payload,
+)
 from app.rules.text_match import match_brand, match_class_type
 from app.rules.warning import match_warning
 
@@ -123,3 +128,26 @@ def overall_status(results: list[FieldResult]) -> str:
     if Verdict.REVIEW in verdicts:
         return Verdict.REVIEW.value
     return Verdict.MATCH.value
+
+
+def overall_status_with_required(
+    results: list[FieldResult], extracted: ExtractedLabel
+) -> str:
+    """Field aggregate plus required-elements REVIEW upgrade (never downgrades FAIL)."""
+    base = overall_status(results)
+    missing = missing_required(extracted, results)
+    return apply_required_to_status(base, missing)
+
+
+def build_result_payload(
+    results: list[FieldResult], extracted: ExtractedLabel, elapsed_ms: int
+) -> dict:
+    """Shared JSON shape for /api/verify and /api/verify-batch success rows."""
+    from dataclasses import asdict
+
+    return {
+        "overall_status": overall_status_with_required(results, extracted),
+        "processing_time_ms": elapsed_ms,
+        "fields": {result.field: asdict(result) for result in results},
+        "required_elements": required_elements_payload(extracted, results),
+    }

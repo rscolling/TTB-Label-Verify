@@ -1,6 +1,8 @@
 """F4 net contents — unit normalization to mL, compare with +/-1% tolerance.
 
 SPEC.md: normalize mL / cL / L / fl oz -> compare in mL, +/-1% tolerance.
+Also American standard malt measures (QA P1-6): pint, quart, and compound
+statements like "1 PT. 6 FL. OZ." (27 CFR part 7 net contents practice).
 """
 
 from __future__ import annotations
@@ -12,12 +14,27 @@ from app.rules.normalize import normalize_text
 
 RELATIVE_TOLERANCE = 0.01  # +/-1% of the application value
 ML_PER_FL_OZ = 29.5735
+ML_PER_PINT = 16 * ML_PER_FL_OZ  # US liquid pint
+ML_PER_QUART = 32 * ML_PER_FL_OZ  # US liquid quart
+
+# Compound American standard: "1 PT. 6 FL. OZ." / "1 PT 6 FL OZ"
+_COMPOUND_PT_FL_OZ_RE = re.compile(
+    r"(\d+(?:[.,]\d+)?)\s*p(?:in)?t\.?\s*"
+    r"(\d+(?:[.,]\d+)?)\s*(?:fluid\s+ounces?|fl\.?\s*oz\.?)",
+    re.IGNORECASE,
+)
+_COMPOUND_QT_FL_OZ_RE = re.compile(
+    r"(\d+(?:[.,]\d+)?)\s*q(?:uar)?t\.?\s*"
+    r"(\d+(?:[.,]\d+)?)\s*(?:fluid\s+ounces?|fl\.?\s*oz\.?)",
+    re.IGNORECASE,
+)
 
 # Longest alternatives first so 'fl oz' wins over bare 'l', 'cl' over 'l', etc.
+# Pint/quart listed before bare 'pt' collisions with other tokens.
 _QUANTITY_RE = re.compile(
     r"(\d+(?:[.,]\d+)?)\s*"
     r"(fluid\s+ounces?|fl\.?\s*oz\.?|milliliters?|millilitres?|centiliters?|centilitres?"
-    r"|liters?|litres?|ml|cl|l)\b",
+    r"|liters?|litres?|quarts?|pints?|ml|cl|qt|pt|l)\b",
     re.IGNORECASE,
 )
 
@@ -33,16 +50,37 @@ _UNIT_TO_ML = {
     "litre": 1000.0,
     "floz": ML_PER_FL_OZ,
     "fluidounce": ML_PER_FL_OZ,
+    "pt": ML_PER_PINT,
+    "pint": ML_PER_PINT,
+    "qt": ML_PER_QUART,
+    "quart": ML_PER_QUART,
 }
 
 
 def parse_net_contents_ml(text: str) -> float | None:
-    """Parse a net-contents string ('750 mL', '75 cL', '0,7 L', '25.4 fl oz') to mL."""
-    m = _QUANTITY_RE.search(normalize_text(text))
+    """Parse a net-contents string to mL (metric, fl oz, US pint/quart, compounds)."""
+    normalized = normalize_text(text)
+
+    # Compound American standard first (pint + fl oz, quart + fl oz).
+    if m := _COMPOUND_PT_FL_OZ_RE.search(normalized):
+        pints = float(m.group(1).replace(",", "."))
+        floz = float(m.group(2).replace(",", "."))
+        return pints * ML_PER_PINT + floz * ML_PER_FL_OZ
+    if m := _COMPOUND_QT_FL_OZ_RE.search(normalized):
+        quarts = float(m.group(1).replace(",", "."))
+        floz = float(m.group(2).replace(",", "."))
+        return quarts * ML_PER_QUART + floz * ML_PER_FL_OZ
+
+    m = _QUANTITY_RE.search(normalized)
     if not m:
         return None
     value = float(m.group(1).replace(",", "."))
     unit_key = re.sub(r"[^a-z]", "", m.group(2).lower()).rstrip("s")
+    # "pt" from "pts" / "pint" from "pints" after rstrip("s")
+    if unit_key == "pint":
+        unit_key = "pint"
+    elif unit_key == "pin":  # rstrip('s') on "pints" -> "pint" actually; "pts"->"pt"
+        unit_key = "pt"
     factor = _UNIT_TO_ML.get(unit_key)
     return value * factor if factor is not None else None
 

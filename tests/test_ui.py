@@ -133,4 +133,6 @@ class TestApiUnchanged:
     def test_health_still_works(self, client):
         response = client.get("/api/health")
         assert response.status_code == 200
-        assert response.json() == {"status": "ok"}
+        body = response.json()
+        assert body["status"] == "ok"
+        assert "api_key_configured" in body

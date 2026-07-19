@@ -6,6 +6,7 @@ No persistence — uploads are processed in memory and discarded (R8).
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 from dataclasses import asdict
 from functools import lru_cache
@@ -20,14 +21,22 @@ from fastapi.staticfiles import StaticFiles
 from app.batch import MAX_BATCH_SIZE, ManifestError, batch_concurrency, normalize_filename, parse_manifest
 from app.extraction import BadImageError, ClaudeExtractor, ExtractionError, Extractor, prepare_image
 from app.form_ingest import ClaudeFormExtractor, FormExtractor, FormIngestError, ingest_form
+from app.limits import (
+    human_mb,
+    max_batch_total_bytes,
+    max_form_bytes,
+    max_image_bytes,
+)
 from app.models import ApplicationData
-from app.rules import overall_status, verify
+from app.rules import build_result_payload, verify
+from app.security import ProtectMiddleware, configured_api_key
 
 load_dotenv()
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 app = FastAPI(title="TTB Label Verification", version="0.1.0")
+app.add_middleware(ProtectMiddleware)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
@@ -61,6 +70,28 @@ NO_LABEL_MESSAGE = (
 )
 
 
+def _too_large_message(kind: str, size: int, limit: int) -> str:
+    return (
+        f"That {kind} is {human_mb(size)} — the limit is {human_mb(limit)}. "
+        "Please use a smaller file (or a lower-resolution photo) and try again."
+    )
+
+
+async def _read_capped(upload: UploadFile, limit: int, kind: str) -> bytes | JSONResponse:
+    """Read an upload, rejecting when it exceeds `limit` bytes."""
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        piece = await upload.read(1024 * 1024)
+        if not piece:
+            break
+        total += len(piece)
+        if total > limit:
+            return _error(413, "payload_too_large", _too_large_message(kind, total, limit))
+        chunks.append(piece)
+    return b"".join(chunks)
+
+
 def run_label_check(image_bytes: bytes, application: ApplicationData, extractor: Extractor) -> dict[str, Any]:
     """The single-label pipeline, shared verbatim by /api/verify and /api/verify-batch.
 
@@ -74,11 +105,7 @@ def run_label_check(image_bytes: bytes, application: ApplicationData, extractor:
         raise NoLabelError()
     results = verify(extracted, application)
     elapsed_ms = int((time.perf_counter() - start) * 1000)
-    return {
-        "overall_status": overall_status(results),
-        "processing_time_ms": elapsed_ms,
-        "fields": {result.field: asdict(result) for result in results},
-    }
+    return build_result_payload(results, extracted, elapsed_ms)
 
 
 @app.exception_handler(Exception)
@@ -94,12 +121,26 @@ def index() -> FileResponse:
 
 
 @app.get("/api/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+def health(deep: bool = False) -> dict[str, Any]:
+    """Liveness probe. With ?deep=1, also report config readiness (no live model call)."""
+    body: dict[str, Any] = {"status": "ok"}
+    key_set = bool(os.environ.get("ANTHROPIC_API_KEY", "").strip())
+    body["api_key_configured"] = key_set
+    body["auth_required"] = configured_api_key() is not None
+    if deep:
+        body["checks"] = {
+            "anthropic_api_key": "configured" if key_set else "missing",
+            "verify_api_key": "required" if configured_api_key() else "open",
+            "extraction_model": os.environ.get("EXTRACTION_MODEL", "claude-sonnet-5"),
+            "max_image_bytes": max_image_bytes(),
+            "max_form_bytes": max_form_bytes(),
+            "max_batch_size": MAX_BATCH_SIZE,
+        }
+    return body
 
 
 @app.post("/api/verify", response_model=None)  # returns dict or error JSONResponse
-def verify_label(
+async def verify_label(
     file: UploadFile = File(...),
     brand: str = Form(...),
     class_type: str | None = Form(None),
@@ -111,7 +152,9 @@ def verify_label(
     extractor: Extractor = Depends(get_extractor),
 ) -> JSONResponse | dict[str, Any]:
     """Verify one label image against the application data."""
-    image_bytes = file.file.read()
+    image_bytes = await _read_capped(file, max_image_bytes(), "photo")
+    if isinstance(image_bytes, JSONResponse):
+        return image_bytes
     application = ApplicationData(
         brand=brand,
         class_type=class_type,
@@ -133,7 +176,7 @@ def verify_label(
 
 
 @app.post("/api/ingest-form", response_model=None)  # returns dict or error JSONResponse
-def ingest_form_endpoint(
+async def ingest_form_endpoint(
     file: UploadFile = File(...),
     form_extractor: FormExtractor = Depends(get_form_extractor),
 ) -> JSONResponse | dict[str, Any]:
@@ -145,7 +188,9 @@ def ingest_form_endpoint(
     CSV/TSV/XLSX; PDF and photo forms go through the LLM document extractor
     (perception only — verdicts stay deterministic). Nothing is persisted (R8).
     """
-    raw = file.file.read()
+    raw = await _read_capped(file, max_form_bytes(), "submittal form")
+    if isinstance(raw, JSONResponse):
+        return raw
     try:
         result = ingest_form(file.filename or "form", raw, form_extractor)
     except FormIngestError as exc:
@@ -198,7 +243,10 @@ async def verify_batch(
     shared: ApplicationData | None = None
     if manifest is not None:
         try:
-            applications = parse_manifest(await manifest.read())
+            manifest_bytes = await _read_capped(manifest, max_form_bytes(), "CSV manifest")
+            if isinstance(manifest_bytes, JSONResponse):
+                return manifest_bytes
+            applications = parse_manifest(manifest_bytes)
         except ManifestError as exc:
             return _error(400, "bad_manifest", str(exc))
     else:
@@ -220,8 +268,22 @@ async def verify_batch(
         )
 
     payloads: list[tuple[str, bytes]] = []
+    total_bytes = 0
+    image_limit = max_image_bytes()
+    batch_limit = max_batch_total_bytes()
     for position, upload in enumerate(files, start=1):
-        payloads.append((upload.filename or f"photo-{position}", await upload.read()))
+        data = await _read_capped(upload, image_limit, "photo")
+        if isinstance(data, JSONResponse):
+            return data
+        total_bytes += len(data)
+        if total_bytes > batch_limit:
+            return _error(
+                413,
+                "payload_too_large",
+                f"This batch is over {human_mb(batch_limit)} total. "
+                "Please split the photos into smaller batches and try again.",
+            )
+        payloads.append((upload.filename or f"photo-{position}", data))
 
     semaphore = asyncio.Semaphore(batch_concurrency())
 

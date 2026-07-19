@@ -444,6 +444,11 @@ main { padding-top: 2rem; }
 }
 
 /* Per-label elapsed time (R2): narrow, numeric, calm. */
+.elapsed-cell.over-budget {
+  color: var(--warn-ink);
+  font-weight: 600;
+}
+
 .elapsed-cell {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;

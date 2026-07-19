@@ -352,8 +352,9 @@ class TestChunkedProgress:
 
 
 class TestCsvExport:
-    # serial,filename,scan_timestamp,processing_seconds,pass_fail,score, 7×(verdict,reason), error
-    EXPECTED_COLUMNS = 6 + 7 * 2 + 1
+    # serial,filename,scan_timestamp,processing_seconds,over_5s_budget,pass_fail,score,
+    # required_missing,reviewer_note, 7×(verdict,reason), error
+    EXPECTED_COLUMNS = 9 + 7 * 2 + 1
 
     def test_export_reparses_with_serial_passfail_score_and_timestamp(
         self, page, base_url, tmp_path
@@ -378,8 +379,9 @@ class TestCsvExport:
 
         rows = list(csv.reader(io.StringIO(text)))
         header = rows[0]
-        assert header[:6] == [
-            "serial", "filename", "scan_timestamp", "processing_seconds", "pass_fail", "score",
+        assert header[:9] == [
+            "serial", "filename", "scan_timestamp", "processing_seconds",
+            "over_5s_budget", "pass_fail", "score", "required_missing", "reviewer_note",
         ]
         for field in CSV_FIELDS:
             assert f"{field}_verdict" in header, field
@@ -399,8 +401,10 @@ class TestCsvExport:
         for row in rows[1:]:
             assert CSV_SECONDS_RE.match(row[seconds_at]), row[seconds_at]
             assert 0.0 <= float(row[seconds_at]) < 60.0, row[seconds_at]
-        assert rows[1][4] == "PASS" and rows[1][5] == "6/6"
-        assert rows[2][4] == "FAIL"
+        pass_at = header.index("pass_fail")
+        score_at = header.index("score")
+        assert rows[1][pass_at] == "PASS" and rows[1][score_at] == "6/6"
+        assert rows[2][pass_at] == "FAIL"
         verdict_at = header.index("brand_verdict")
         assert rows[1][verdict_at] == "match"
         assert rows[2][verdict_at] == "mismatch"

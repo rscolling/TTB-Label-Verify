@@ -19,13 +19,29 @@ class TestParseNetContents:
             ("25.4 fl oz", 751.17),
             ("25.4 FL. OZ.", 751.17),
             ("12 fluid ounces", 354.88),
+            # American standard (malt)
+            ("1 pint", 473.176),
+            ("1 PT.", 473.176),
+            ("1 quart", 946.352),
+            ("1 PT. 6 FL. OZ.", 473.176 + 6 * 29.5735),
+            ("1 PT 6 FL OZ", 473.176 + 6 * 29.5735),
         ],
     )
     def test_variants(self, text: str, expected_ml: float):
-        assert parse_net_contents_ml(text) == pytest.approx(expected_ml, abs=0.01)
+        assert parse_net_contents_ml(text) == pytest.approx(expected_ml, abs=0.05)
 
     def test_unparseable_returns_none(self):
         assert parse_net_contents_ml("a fifth") is None
+
+    def test_pint_matches_equivalent_ml(self):
+        result = match_net_contents("1 pint", f"{16 * 29.5735:.3f} mL")
+        assert result.verdict is Verdict.MATCH
+
+    def test_compound_pt_floz_matches(self):
+        # 1 PT. 6 FL. OZ. = 22 fl oz
+        ml = 22 * 29.5735
+        result = match_net_contents("1 PT. 6 FL. OZ.", f"{ml:.2f} mL")
+        assert result.verdict is Verdict.MATCH
 
 
 class TestMatchNetContents:

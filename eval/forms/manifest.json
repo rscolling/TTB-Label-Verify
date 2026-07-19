@@ -1,0 +1,14 @@
+{
+  "cases": [
+    {
+      "id": "clean-csv-two-row",
+      "file": "clean-two-row.csv",
+      "expected_source_kind": "csv",
+      "expected_row_count": 2,
+      "row_checks": [
+        {"index": 0, "fields": {"brand": "Copper Hollow", "filename": "bourbon.png"}},
+        {"index": 1, "fields": {"brand": "Juniper Gate", "is_import": true}}
+      ]
+    }
+  ]
+}
