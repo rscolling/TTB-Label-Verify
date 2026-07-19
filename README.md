@@ -27,6 +27,39 @@ comparison for every field, and the per-clause diff of the health warning:
 
 ![Review drill-down showing the label photo, field comparison, and warning clause diff](docs/screenshots/review-drilldown.png)
 
+### Error and problem states
+
+Friendly, plain-language error UI (pre-scan blocks, per-row ERROR/FAIL/REVIEW).
+Full set and capture script: [docs/screenshots/error-ui/](docs/screenshots/error-ui/).
+
+Pre-scan validation — Run with no photos:
+
+![Error callout when no photos are selected](docs/screenshots/error-ui/01-no-photos-error.png)
+
+Scan blocked when form rows and photos cannot be paired safely:
+
+![Error callout for form and photo count mismatch](docs/screenshots/error-ui/02-form-photo-count-mismatch.png)
+
+Worksheet after a mixed scan — PASS / ERROR (extraction failed) / FAIL:
+
+![Worksheet with pass, error, and fail rows](docs/screenshots/error-ui/03-worksheet-mixed-pass-error-fail.png)
+
+Drill-down on an ERROR row (friendly message, no field table):
+
+![Error row drill-down panel](docs/screenshots/error-ui/04-error-row-drilldown.png)
+
+Drill-down on a FAIL row (submitted vs found comparison):
+
+![Fail row drill-down with field comparison](docs/screenshots/error-ui/05-fail-row-drilldown.png)
+
+Photos only, no submittal form — every row flagged REVIEW (never a silent pass):
+
+![No-submittal scan with review badges](docs/screenshots/error-ui/06-no-submittal-review.png)
+
+Bad / non-image file — per-row ERROR and summary banner:
+
+![Bad file error row](docs/screenshots/error-ui/07-all-rows-bad-file.png)
+
 ## Quick start
 
 Requires Python 3.11+.
