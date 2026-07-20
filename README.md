@@ -36,9 +36,10 @@ Pre-scan validation — Run with no photos:
 
 ![Error callout when no photos are selected](docs/screenshots/error-ui/01-no-photos-error.png)
 
-Scan blocked when form rows and photos cannot be paired safely:
+Scan blocked when a form row has no brand name (count mismatches no longer
+block — unmatched rows become MISSING in the worksheet):
 
-![Error callout for form and photo count mismatch](docs/screenshots/error-ui/02-form-photo-count-mismatch.png)
+![Error callout for a form row with no brand name](docs/screenshots/error-ui/02-form-missing-brand.png)
 
 Worksheet after a mixed scan — PASS / ERROR (extraction failed) / FAIL:
 
@@ -107,11 +108,33 @@ counts them (e.g. “2 form rows had no photo”).
 Each worksheet row shows a serial number, the scan timestamp, the per-label
 processing time, a thumbnail, the seven extracted field values each with a
 ✓ / ⚠ / ✗ / — mark, a score ("6/6 fields match"), and a PASS / FAIL / REVIEW
-result. Flagged rows (FAIL and REVIEW) open a drill-down — click the row or
-its Review button — showing the label photo large, the submitted-vs-found
-comparison per field with a one-sentence explanation, and a per-clause diff
-when the health warning text differs. Download the whole worksheet as CSV
-when done.
+result. Filter buttons above the worksheet (**All / Passed / Failed**) narrow
+the rows. Flagged rows (FAIL and REVIEW) open a drill-down — click the row or
+its Review button — showing the label photo large (click it to enlarge in a
+lightbox), the submitted-vs-found comparison per field with the explanation
+under each verdict, and a per-clause diff when the health warning text
+differs. Download the whole worksheet as CSV when done.
+
+### Human review workflow
+
+The scan is a screen; the decision is human. The drill-down on a flagged row
+gives the reviewer the whole job in one place:
+
+- **Approve / Deny** the label (with undo). The decision overrides the row's
+  displayed status (APPROVED / DENIED), the summary banner recounts live, and
+  the scan's original verdict is preserved underneath.
+- **Per-field checks** — for each field, tick **Confirm reading** (the model
+  read the label correctly) or **Update reading** (it misread; type what the
+  label actually says). Checks are audit evidence; they never auto-change the
+  PASS/FAIL score.
+- **Feedback comment** — a free-text field for why the label failed, written
+  for the applicant company.
+
+Everything the reviewer enters rides the CSV export: `pass_fail` reflects the
+decision, `reviewer_note` records it (e.g. `Denied by reviewer (was FAIL)`),
+`reviewer_comment` carries the feedback, and `field_checks` lists the
+confirmed/corrected readings. Decisions live in the browser only — nothing is
+stored server-side — so the downloaded CSV is the record of the review.
 
 **No submittal form?** The photos are still scanned and the extracted columns
 filled in, but every row is flagged "No submittal data — needs review" —

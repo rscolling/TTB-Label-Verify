@@ -5,7 +5,7 @@ Screenshots captured with a local fake backend (`capture_error_ui.py`).
 | File | State |
 |------|--------|
 | `01-no-photos-error.png` | Pre-scan validation: Run with no photos — red **error callout** |
-| `02-form-photo-count-mismatch.png` | Scan blocked: form rows ≠ photos, no filename column |
+| `02-form-missing-brand.png` | Scan blocked: a form row has no brand name |
 | `03-worksheet-mixed-pass-error-fail.png` | Worksheet: PASS + **ERROR** (extraction failed) + **FAIL** |
 | `04-error-row-drilldown.png` | Drill-down on an ERROR row |
 | `05-fail-row-drilldown.png` | Drill-down on a FAIL row (field comparison) |

@@ -136,8 +136,12 @@ def main() -> None:
         page.wait_for_selector("#error-callout:not([hidden])")
         page.screenshot(path=str(OUT / "01-no-photos-error.png"), full_page=True)
 
-        # 2) Form/photo count mismatch (blocks scan)
-        form_extractor.delegate = FakeFormExtractor(rows=[FormRow(brand="Only One")])
+        # 2) Form row with no brand name (blocks scan — every application
+        # needs one). Count mismatches no longer block: they become MISSING
+        # rows in the worksheet instead.
+        form_extractor.delegate = FakeFormExtractor(
+            rows=[FormRow(brand=""), FormRow(brand="Stone's Throw")]
+        )
         page.goto(base + "/")
         page.set_input_files("#file-input", files=files(["a.png", "b.png"]))
         page.set_input_files(
@@ -147,7 +151,7 @@ def main() -> None:
         page.wait_for_timeout(500)
         page.click("#scan-button")
         page.wait_for_selector("#error-callout:not([hidden])")
-        page.screenshot(path=str(OUT / "02-form-photo-count-mismatch.png"), full_page=True)
+        page.screenshot(path=str(OUT / "02-form-missing-brand.png"), full_page=True)
 
         # 3) Mixed worksheet: PASS + ERROR + FAIL
         extractor.delegate = RoutingExtractor()
