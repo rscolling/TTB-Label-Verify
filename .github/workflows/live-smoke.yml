@@ -12,21 +12,40 @@ on:
 jobs:
   live:
     runs-on: ubuntu-latest
-    if: ${{ secrets.ANTHROPIC_API_KEY != '' }}
     steps:
+      # The secrets context is not allowed in a job-level `if` (the workflow
+      # file is invalid and every push logs a failed run) — gate each step on
+      # a step-level check instead. No key -> the run completes as a no-op.
+      - name: Check for API key
+        id: key
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -n "$ANTHROPIC_API_KEY" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "No ANTHROPIC_API_KEY secret configured — skipping live smoke."
+          fi
+
       - uses: actions/checkout@v4
+        if: steps.key.outputs.present == 'true'
 
       - uses: actions/setup-python@v5
+        if: steps.key.outputs.present == 'true'
         with:
           python-version: "3.11"
 
       - name: Install dependencies
+        if: steps.key.outputs.present == 'true'
         run: pip install -r requirements.txt
 
       - name: Live API smoke (one label path)
+        if: steps.key.outputs.present == 'true'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: pytest -q -m live
 
       - name: Form eval (deterministic fixtures)
+        if: steps.key.outputs.present == 'true'
         run: python eval/run_form_eval.py
