@@ -143,9 +143,10 @@ class TestQa4ManifestEdgeSemantics:
             "'#results img[src=\"x\"], #results img[src=\"X\"]').length"
         ) == 0
 
-    def test_qa4_csv_row_with_no_matching_photo_is_ignored(self, page, base_url):
-        """L2 semantics through the UI: a manifest row for a photo that was
-        never uploaded is ignored — no ghost worksheet row, no error."""
+    def test_qa4_csv_row_with_no_matching_photo_is_reported_missing(self, page, base_url):
+        """A manifest row for a photo that was never uploaded is REPORTED, not
+        silently dropped: it appears as a flagged MISSING worksheet row and the
+        banner counts it (behavior changed from ignore -> report in a9a6260)."""
         manifest = (
             MANIFEST_HEADER + "\n"
             f"a.png,{MATCHING_ROW_BODY}\n"
@@ -158,11 +159,15 @@ class TestQa4ManifestEdgeSemantics:
         wait_for_banner(playwright_api, page)
 
         playwright_api.expect(page.locator("#banner-text")).to_have_text(
-            "1 label scanned — 1 passed"
+            "1 label scanned — 1 passed, 1 form row had no photo"
         )
-        playwright_api.expect(worksheet_rows(page)).to_have_count(1)
+        playwright_api.expect(worksheet_rows(page)).to_have_count(2)
         body_text = page.locator("#worksheet-body").text_content() or ""
-        assert "ghost.png" not in body_text, "ignored CSV row leaked into the worksheet"
+        assert "ghost.png" in body_text, "missing form row absent from the worksheet"
+        badges = page.eval_on_selector_all(
+            "#worksheet-body .status-badge", "els => els.map(e => e.textContent)"
+        )
+        assert badges.count("MISSING") == 1, badges
 
 
 class TestQa4CsvStaleStateFindings:

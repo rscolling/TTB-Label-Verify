@@ -388,7 +388,8 @@ class TestChunkedProgress:
 class TestCsvExport:
     # serial,filename,scan_timestamp,processing_seconds,over_5s_budget,pass_fail,score,
     # required_missing,reviewer_note, 7×(verdict,reason), error
-    EXPECTED_COLUMNS = 9 + 7 * 2 + 1
+    # 9 bookkeeping + reviewer_comment/field_checks + 7 x (verdict, reason) + error
+    EXPECTED_COLUMNS = 11 + 7 * 2 + 1
 
     def test_export_reparses_with_serial_passfail_score_and_timestamp(
         self, page, base_url, tmp_path

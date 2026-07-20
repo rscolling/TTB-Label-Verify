@@ -3,11 +3,12 @@
 Drives the real browser with a faked form extractor to exercise the client's
 order/name matching rules (buildScanPlan) at their boundaries:
 
-  * no-filename form with FEWER and with MORE rows than photos -> both blocked
-    with a clear count-mismatch message (never a silent mispairing);
+  * no-filename form with FEWER and with MORE rows than photos -> order-match
+    what pairs, extras scan without submittal data (REVIEW) and leftover rows
+    are reported MISSING (never a silent mispairing or drop);
   * mixed named/unnamed rows where the leftover counts are ambiguous ->
-    unnamed rows set aside, unmatched photos scanned without submittal data
-    (flagged), with the notice explaining it;
+    unnamed rows reported MISSING, unmatched photos scanned without submittal
+    data (flagged), with the notice explaining it;
   * duplicate filenames in ingested rows that differ only by case -> blocked
     with the duplicate-photo message (the form's own duplicate warning is also
     surfaced at ingest time);
@@ -86,7 +87,12 @@ def page(base_url):
 
 
 class TestQa5CountMismatch:
-    def test_qa5_fewer_form_rows_than_photos_blocks_with_a_clear_message(
+    """Count mismatches no longer block (behavior changed in a9a6260): rows
+    and photos pair by order, extra photos scan without submittal data
+    (flagged REVIEW), and leftover form rows become flagged MISSING report
+    rows — never a silent drop or mispairing."""
+
+    def test_qa5_fewer_form_rows_than_photos_order_matches_and_flags_extras(
         self, page, base_url, form_extractor
     ):
         form_extractor.delegate = FakeFormExtractor(rows=[full_row(), full_row()])
@@ -96,16 +102,22 @@ class TestQa5CountMismatch:
         wait_for_ingest(playwright_api, page)
 
         page.click("#scan-button")
-        callout = page.locator("#error-callout")
-        playwright_api.expect(callout).to_be_visible()
-        playwright_api.expect(callout).to_contain_text("2 rows")
-        playwright_api.expect(callout).to_contain_text("3 photos")
-        playwright_api.expect(callout).to_contain_text(
-            "doesn't say which photo each row belongs to"
+        wait_for_banner(playwright_api, page)
+        notice = page.locator("#match-notice")
+        playwright_api.expect(notice).to_be_visible()
+        playwright_api.expect(notice).to_contain_text(
+            "1 extra photo scanned without submittal data"
         )
-        playwright_api.expect(page.locator("#results")).to_be_hidden()
+        playwright_api.expect(page.locator("#banner-text")).to_have_text(
+            "3 labels scanned — 2 passed, 1 needs review"
+        )
+        badges = page.eval_on_selector_all(
+            "#worksheet-body .status-badge", "els => els.map(e => e.textContent)"
+        )
+        assert badges.count("PASS") == 2, badges
+        assert badges.count("REVIEW") == 1, badges
 
-    def test_qa5_more_form_rows_than_photos_blocks_with_a_clear_message(
+    def test_qa5_more_form_rows_than_photos_reports_leftover_rows_missing(
         self, page, base_url, form_extractor
     ):
         form_extractor.delegate = FakeFormExtractor(
@@ -117,11 +129,20 @@ class TestQa5CountMismatch:
         wait_for_ingest(playwright_api, page)
 
         page.click("#scan-button")
-        callout = page.locator("#error-callout")
-        playwright_api.expect(callout).to_be_visible()
-        playwright_api.expect(callout).to_contain_text("3 rows")
-        playwright_api.expect(callout).to_contain_text("2 photos")
-        playwright_api.expect(page.locator("#results")).to_be_hidden()
+        wait_for_banner(playwright_api, page)
+        notice = page.locator("#match-notice")
+        playwright_api.expect(notice).to_be_visible()
+        playwright_api.expect(notice).to_contain_text(
+            "1 form row had no matching photo — listed as MISSING"
+        )
+        playwright_api.expect(page.locator("#banner-text")).to_have_text(
+            "2 labels scanned — 2 passed, 1 form row had no photo"
+        )
+        badges = page.eval_on_selector_all(
+            "#worksheet-body .status-badge", "els => els.map(e => e.textContent)"
+        )
+        assert badges.count("PASS") == 2, badges
+        assert badges.count("MISSING") == 1, badges
 
 
 class TestQa5MixedNamedUnnamed:
@@ -130,8 +151,9 @@ class TestQa5MixedNamedUnnamed:
     ):
         """One row names a photo; two rows are unnamed; three photos remain
         unclaimed -> unnamed(2) != leftover(3) is ambiguous, so the unnamed
-        rows are set aside and the unclaimed photos scan WITHOUT submittal data
-        (flagged REVIEW rows), never silently mispaired."""
+        rows become flagged MISSING report rows and the unclaimed photos scan
+        WITHOUT submittal data (flagged REVIEW rows), never silently
+        mispaired (report-not-block semantics since a9a6260)."""
         form_extractor.delegate = FakeFormExtractor(rows=[
             full_row(filename="b.png"), full_row(), full_row(),
         ])
@@ -146,16 +168,23 @@ class TestQa5MixedNamedUnnamed:
         wait_for_banner(playwright_api, page)
         notice = page.locator("#match-notice")
         playwright_api.expect(notice).to_be_visible()
-        playwright_api.expect(notice).to_contain_text("couldn't be matched")
-        playwright_api.expect(worksheet_rows(page)).to_have_count(4)
+        playwright_api.expect(notice).to_contain_text(
+            "2 form rows had no matching photo — listed as MISSING"
+        )
+        playwright_api.expect(notice).to_contain_text(
+            "3 photos had no form row and were scanned without submittal data"
+        )
+        playwright_api.expect(worksheet_rows(page)).to_have_count(6)
 
         # The named photo (b.png) matched -> PASS; the three unclaimed photos
-        # have no submittal data -> REVIEW (flagged, never a silent pass).
+        # have no submittal data -> REVIEW (flagged, never a silent pass);
+        # the two unnamed form rows are reported MISSING.
         badges = page.eval_on_selector_all(
             "#worksheet-body .status-badge", "els => els.map(e => e.textContent)"
         )
         assert badges.count("PASS") == 1, f"exactly one matched PASS expected: {badges}"
         assert badges.count("REVIEW") == 3, f"three no-submittal REVIEWs expected: {badges}"
+        assert badges.count("MISSING") == 2, f"two MISSING report rows expected: {badges}"
 
     def test_qa5_unnamed_equals_leftover_pairs_by_order_with_notice(
         self, page, base_url, form_extractor

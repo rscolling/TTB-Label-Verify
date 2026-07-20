@@ -273,9 +273,12 @@ class TestPdfFormPath:
         )
         playwright_api.expect(worksheet_rows(page).first).to_contain_text("first.png")
 
-    def test_count_mismatch_blocks_the_scan_with_an_explanation(
+    def test_count_mismatch_order_matches_and_reports_leftover_rows_missing(
         self, page, base_url, form_extractor
     ):
+        """Report-not-block semantics (a9a6260): 3 unnamed rows + 2 photos ->
+        the first 2 rows pair by order, the leftover row is a flagged MISSING
+        worksheet row, and the notice explains the pairing."""
         form_extractor.delegate = FakeFormExtractor(rows=[
             FormRow(brand="One"), FormRow(brand="Two"), FormRow(brand="Three"),
         ])
@@ -285,12 +288,17 @@ class TestPdfFormPath:
         wait_for_ingest(page)
 
         page.click("#scan-button")
-        callout = page.locator("#error-callout")
-        playwright_api.expect(callout).to_be_visible()
-        playwright_api.expect(callout).to_contain_text(
-            "doesn't say which photo each row belongs to"
+        wait_for_banner(page)
+        notice = page.locator("#match-notice")
+        playwright_api.expect(notice).to_be_visible()
+        playwright_api.expect(notice).to_contain_text(
+            "1 form row had no matching photo — listed as MISSING"
         )
-        playwright_api.expect(page.locator("#results")).to_be_hidden()
+        playwright_api.expect(page.locator("#results")).to_be_visible()
+        badges = page.eval_on_selector_all(
+            "#worksheet-body .status-badge", "els => els.map(e => e.textContent)"
+        )
+        assert badges.count("MISSING") == 1, badges
 
     def test_unreadable_form_shows_callout_and_selects_nothing(self, page, base_url):
         page.goto(base_url + "/")

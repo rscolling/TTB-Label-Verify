@@ -67,7 +67,9 @@ CSV_FIELDS = [
 ]
 # serial, filename, scan_timestamp, processing_seconds, over_5s_budget,
 # pass_fail, score, required_missing, reviewer_note, 7 x (verdict, reason), error
-EXPECTED_COLUMNS = 9 + 7 * 2 + 1
+# 9 bookkeeping + reviewer_comment/field_checks (human review workflow) +
+# 7 fields x (verdict, reason) + error.
+EXPECTED_COLUMNS = 11 + 7 * 2 + 1
 
 # A submittal row body filling every column, import checked.
 FULL_ROW_BODY = "Legit Brand,Bourbon,45%,750 mL,Distiller Co.,France,true"
