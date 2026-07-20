@@ -4,6 +4,45 @@ Notable project changes, newest first.
 
 ---
 
+## 2026-07-19 — Human review workflow + second-agent QA (Grok Build)
+
+**Git:** `a94e60b`, `8f482ef`, `3ec0bb5` on `main`
+
+**QA process:** a second, independent QA pass was run with **Grok Build
+(xAI)** alongside the original QA agent ([QA-REPORT.md](QA-REPORT.md)).
+Grok Build exercised the running UI as a reviewer would; its findings were
+triaged by the maintainer and fixed in the commits above.
+
+### Features
+
+- **Worksheet filters**: All / Passed / Failed buttons above the results.
+- **Human review workflow** in the flagged-row drill-down:
+  - Approve / Deny the label (with undo); decision overrides the displayed
+    status and recounts the summary banner, original scan verdict preserved.
+  - Per-field **Confirm reading / Update reading** checkboxes with a
+    corrected-reading input (audit evidence; never auto-changes the score).
+  - **Feedback comment** for the applicant company on why the label failed.
+- **CSV export**: `pass_fail` reflects the reviewer decision;
+  `reviewer_note` records it; new `reviewer_comment` and `field_checks`
+  columns. Review state is browser-only (R8) — the CSV is the record.
+
+### Fixes (from the second-agent QA pass)
+
+- Filter buttons wrapped onto two lines; now one row with spacing before
+  the download button.
+- Drill-down comparison table clipped its right-hand columns; Explanation
+  folded into the Result cell so all columns fit without sideways scroll.
+- Label photo now click-to-enlarges in a native `<dialog>` lightbox with a
+  visible close button; photo stays sticky while the comparison scrolls.
+
+### Docs
+
+- README: review-workflow section; all screenshots recaptured for the
+  current UI (main shots now use real eval label images).
+- Error-UI capture script scenario 2 updated: count mismatches no longer
+  block the scan (they become MISSING rows), so the blocked-scan example is
+  now a form row with no brand name.
+
 ## 2026-07-19 — QA hardening pass
 
 **Git:** `7b7106f` on `main`  

@@ -5,6 +5,13 @@
 **Evidence:** Docs + source review; offline suite re-run on this machine  
 **Date:** 2026-07-19  
 
+> **Second-agent QA:** in addition to this report, a second independent QA
+> pass was run on 2026-07-19 with **Grok Build (xAI)**, exercising the
+> running UI as a reviewer would. Its findings (worksheet filter layout,
+> drill-down clipping/scrolling, photo enlargement) were fixed the same day —
+> see the [CHANGELOG](CHANGELOG.md) entry "Human review workflow +
+> second-agent QA" for the commit list.
+
 ---
 
 ## 1. Summary
